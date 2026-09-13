@@ -1,0 +1,31 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.repository == 'quantumx-apps/filebrowser-dashboard'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      # Requires secrets: PROXY_HOST, PROXY_USER, PROXY_SSH_KEY
+      - name: Deploy to proxy host
+        if: ${{ secrets.PROXY_HOST != '' }}
+        uses: easingthemes/ssh-deploy@v5
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.PROXY_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.PROXY_HOST }}
+          REMOTE_USER: ${{ secrets.PROXY_USER }}
+          SOURCE: dist/
+          TARGET: /var/www/dashboard/
