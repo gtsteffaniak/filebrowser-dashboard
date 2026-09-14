@@ -41,6 +41,15 @@ export const TIMESERIES_MODAL_TYPES: ModalChartType[] = ['line', 'area', 'bar', 
 /** Distribution / range histogram panels. */
 export const RANGE_MODAL_TYPES: ModalChartType[] = ['bar', 'bar-h', 'doughnut', 'pie'];
 
+/** Multi-metric range histograms (grouped bars per bucket). */
+export const GROUPED_RANGE_MODAL_TYPES: ModalChartType[] = [
+  'bar',
+  'bar-h',
+  'stacked-bar',
+  'doughnut',
+  'pie',
+];
+
 /** Categorical snapshot breakdowns (countries, OS, runtime). */
 export const COLUMNAR_MODAL_TYPES: ModalChartType[] = ['bar-h', 'bar', 'doughnut', 'pie'];
 

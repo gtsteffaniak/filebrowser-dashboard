@@ -14,6 +14,8 @@ import {
   pctBar,
   rangeBar,
   stackedComposition,
+  withValueFormat,
+  type ValueFormatter,
 } from '../charts/builders';
 import type { FlagBreakdown } from '../types/dashboard-v1';
 import type { ModalBuildOptions, ModalChartType, ModalControlsConfig } from './modalTypes';
@@ -21,11 +23,14 @@ import {
   COLUMNAR_MODAL_TYPES,
   COMPOSITION_MODAL_TYPES,
   FLAG_MODAL_TYPES,
+  GROUPED_RANGE_MODAL_TYPES,
   RANGE_MODAL_TYPES,
   TIMESERIES_MODAL_TYPES,
   isHorizontalBar,
 } from './modalTypes';
+import type { DashboardSection } from './sections';
 import { formatHostPlatformBreakdown, formatOsBreakdown } from '../utils/labels';
+import { formatBytes } from '../utils/format';
 import { filterVersionSeries } from '../utils/versions';
 
 function modalChartType(modal?: ModalBuildOptions, types?: ModalChartType[]): ModalChartType | undefined {
@@ -79,8 +84,9 @@ export interface PanelDef {
   id: string;
   title: string;
   group: PanelGroup;
+  section?: DashboardSection;
+  hero?: boolean;
   description?: string;
-  /** When false, the panel is omitted (e.g. optional fields in older dashboard JSON). */
   isAvailable?: (win: WindowData) => boolean;
   modal?: ModalControlsConfig;
   build: (
@@ -100,18 +106,79 @@ function rangeVals(win: WindowData, key: string): number[] {
   return win.panels.ranges[key] ?? [];
 }
 
+type GroupedRangeSeries = { label: string; rangeKey: string };
+
+function buildGroupedRangeChart(
+  bucketLabels: string[],
+  series: GroupedRangeSeries[],
+  win: WindowData,
+  group: PanelGroup,
+  compact: boolean,
+  modal?: ModalBuildOptions,
+): ChartConfiguration {
+  const seriesLabels = series.map((s) => s.label);
+  const seriesData = series.map((s) => rangeVals(win, s.rangeKey));
+  const chartType = modalChartType(modal, GROUPED_RANGE_MODAL_TYPES) ?? 'bar';
+  if (chartType === 'doughnut' || chartType === 'pie') {
+    const totals = seriesData.map((arr) => arr.reduce((a, b) => a + b, 0));
+    return circularBreakdown(seriesLabels, totals, group, compact, chartType);
+  }
+  if (chartType === 'stacked-bar') {
+    const pct = normalizeSeriesToPercent(seriesData);
+    return stackedComposition(bucketLabels, seriesLabels, pct, group, compact, 'bar');
+  }
+  return groupedBarMulti(
+    bucketLabels,
+    seriesLabels,
+    seriesData,
+    group,
+    compact,
+    chartType === 'bar-h',
+  );
+}
+
+function groupedRangePanel(
+  id: string,
+  title: string,
+  description: string,
+  group: PanelGroup,
+  labelRangeKey: string,
+  series: GroupedRangeSeries[],
+  section: DashboardSection,
+  opts?: { optionalRangeKeys?: string[] },
+): PanelDef {
+  const optionalKeys = opts?.optionalRangeKeys ?? [];
+  return {
+    id,
+    title,
+    description,
+    group,
+    section,
+    isAvailable: optionalKeys.length
+      ? (win) => optionalKeys.every((k) => Array.isArray(win.panels.ranges[k]))
+      : undefined,
+    modal: { chartTypes: GROUPED_RANGE_MODAL_TYPES, zoom: true },
+    build: (d, win, _s, c, modal) =>
+      buildGroupedRangeChart(rangeLabels(d, labelRangeKey), series, win, group, c, modal),
+  };
+}
+
 function rangePanel(
   id: string,
   title: string,
   description: string,
   group: PanelGroup,
   rangeKey: string,
+  section: DashboardSection,
+  optional = false,
 ): PanelDef {
   return {
     id,
     title,
     description,
     group,
+    section,
+    isAvailable: optional ? (win) => Array.isArray(win.panels.ranges[rangeKey]) : undefined,
     modal: { chartTypes: RANGE_MODAL_TYPES, zoom: true },
     build: (d, win, _s, c, modal) => {
       const labels = rangeLabels(d, rangeKey);
@@ -131,6 +198,7 @@ function columnarPanel(
   description: string,
   group: PanelGroup,
   getData: (win: WindowData) => { labels: string[]; values: number[] },
+  section: DashboardSection,
   opts: {
     defaultHorizontal?: boolean;
     chartTypes?: ModalControlsConfig['chartTypes'];
@@ -143,6 +211,7 @@ function columnarPanel(
     title,
     description,
     group,
+    section,
     modal: {
       chartTypes: opts.chartTypes ?? COLUMNAR_MODAL_TYPES,
       zoom: opts.zoom ?? true,
@@ -166,22 +235,87 @@ function timeseriesPanel(
   group: PanelGroup,
   valueKey: keyof WindowData['panels']['timeseries'],
   datasetLabel: string,
+  section: DashboardSection,
+  extra?: { formatter?: ValueFormatter; integerTicks?: boolean },
 ): PanelDef {
   return {
     id,
     title,
     description,
     group,
+    section,
     modal: { chartTypes: TIMESERIES_MODAL_TYPES, zoom: true },
     build: (_d, win, _s, c, modal) => {
       const labels = bucketLabels(win);
-      const values = win.panels.timeseries[valueKey] ?? [];
-      if (!modal) return lineSingle(labels, values, datasetLabel, group, c, true);
+      const values = (win.panels.timeseries[valueKey] as number[] | undefined) ?? [];
+      if (!modal) {
+        return lineSingle(labels, values, datasetLabel, group, c, true, extra?.formatter, extra?.integerTicks);
+      }
       const chartType = modalChartType(modal, TIMESERIES_MODAL_TYPES) ?? 'line';
       if (chartType === 'line' || chartType === 'area' || chartType === 'bar' || chartType === 'bar-h') {
-        return buildTimeseriesChart(labels, values, datasetLabel, group, c, chartType);
+        return buildTimeseriesChart(
+          labels,
+          values,
+          datasetLabel,
+          group,
+          c,
+          chartType,
+          extra?.formatter,
+          extra?.integerTicks,
+        );
       }
-      return lineSingle(labels, values, datasetLabel, group, c, true);
+      return lineSingle(labels, values, datasetLabel, group, c, true, extra?.formatter, extra?.integerTicks);
+    },
+  };
+}
+
+function multiTimeseriesPanel(
+  id: string,
+  title: string,
+  description: string,
+  group: PanelGroup,
+  seriesKeys: Array<{ key: keyof WindowData['panels']['timeseries']; label: string }>,
+  section: DashboardSection,
+  extra?: { formatter?: ValueFormatter; integerTicks?: boolean },
+): PanelDef {
+  return {
+    id,
+    title,
+    description,
+    group,
+    section,
+    modal: { chartTypes: TIMESERIES_MODAL_TYPES, zoom: true },
+    build: (_d, win, _s, c, modal) => {
+      const labels = bucketLabels(win);
+      const ts = win.panels.timeseries;
+      const seriesLabels = seriesKeys.map((s) => s.label);
+      const seriesData = seriesKeys.map((s) => (ts[s.key] as number[] | undefined) ?? []);
+      const chartType = modalChartType(modal, TIMESERIES_MODAL_TYPES) ?? 'line';
+      const fill = chartType === 'area';
+      if (chartType === 'bar' || chartType === 'bar-h') {
+        const cfg = groupedBarMulti(labels, seriesLabels, seriesData, group, c, chartType === 'bar-h');
+        return {
+          ...cfg,
+          options: withValueFormat(cfg.options ?? {}, extra?.formatter, extra?.integerTicks),
+        };
+      }
+      const cfg = lineMulti(labels, seriesLabels, seriesData, group, c, undefined, undefined, fill);
+      const options = withValueFormat(
+        {
+          ...cfg.options,
+          plugins: {
+            ...cfg.options?.plugins,
+            legend: {
+              ...cfg.options?.plugins?.legend,
+              display: true,
+              position: 'bottom',
+            },
+          },
+        },
+        extra?.formatter,
+        extra?.integerTicks,
+      );
+      return { ...cfg, options };
     },
   };
 }
@@ -192,6 +326,7 @@ function compositionTimeseriesPanel(
   description: string,
   group: PanelGroup,
   seriesKeys: Array<{ key: keyof WindowData['panels']['timeseries']; label: string }>,
+  section: DashboardSection,
   opts: { alreadyPercent?: boolean } = {},
 ): PanelDef {
   const alreadyPercent = opts.alreadyPercent ?? true;
@@ -200,12 +335,13 @@ function compositionTimeseriesPanel(
     title,
     description,
     group,
+    section,
     modal: { chartTypes: COMPOSITION_MODAL_TYPES, zoom: true },
     build: (_d, win, _s, c, modal) => {
       const labels = bucketLabels(win);
       const ts = win.panels.timeseries;
       const seriesLabels = seriesKeys.map((s) => s.label);
-      const raw = seriesKeys.map((s) => ts[s.key] ?? []);
+      const raw = seriesKeys.map((s) => (ts[s.key] as number[] | undefined) ?? []);
       return buildCompositionChart(labels, seriesLabels, raw, group, c, modal, alreadyPercent);
     },
   };
@@ -214,34 +350,37 @@ function compositionTimeseriesPanel(
 export const PANELS: PanelDef[] = [
   {
     id: 'active-installations',
-    title: 'Reporting installations',
+    title: 'Reported installations',
     group: 'overview',
-    description: 'How many unique deployments sent a snapshot in each time bucket.',
+    hero: true,
+    description: 'How many installations sent usage data in each period.',
     modal: { chartTypes: TIMESERIES_MODAL_TYPES, zoom: true },
     build: (_d, win, _s, c, modal) => {
       const labels = bucketLabels(win);
       const values = win.panels.timeseries.active_installations;
-      if (!modal) return lineSingle(labels, values, 'Installations', 'overview', c, true);
+      if (!modal) return lineSingle(labels, values, 'Installations', 'overview', c, true, undefined, true);
       const chartType = modalChartType(modal, TIMESERIES_MODAL_TYPES) ?? 'line';
       if (chartType === 'line' || chartType === 'area' || chartType === 'bar' || chartType === 'bar-h') {
-        return buildTimeseriesChart(labels, values, 'Installations', 'overview', c, chartType);
+        return buildTimeseriesChart(labels, values, 'Installations', 'overview', c, chartType, undefined, true);
       }
-      return lineSingle(labels, values, 'Installations', 'overview', c, true);
+      return lineSingle(labels, values, 'Installations', 'overview', c, true, undefined, true);
     },
   },
   columnarPanel(
     'countries',
-    'Where instances run',
-    'Geographic spread of deployments, based on client country at snapshot time.',
+    'Country',
+    'Where installations connect from.',
     'deployments',
     (w) => w.panels.countries,
+    'how-it-runs',
     { defaultHorizontal: true, zoom: true },
   ),
   {
     id: 'os',
-    title: 'Host operating system',
+    title: 'Operating system',
     group: 'deployments',
-    description: 'Linux, Windows, macOS, and other platforms in the fleet.',
+    section: 'how-it-runs',
+    description: 'Linux, Windows, macOS, and others.',
     modal: { chartTypes: COLUMNAR_MODAL_TYPES, zoom: true },
     build: (_d, win, _s, c, modal) => {
       const data = formatOsBreakdown(win.panels.os);
@@ -257,7 +396,8 @@ export const PANELS: PanelDef[] = [
     id: 'arch',
     title: 'CPU architecture',
     group: 'deployments',
-    description: 'amd64 vs arm64 and other architectures across the fleet.',
+    section: 'how-it-runs',
+    description: '64-bit x86 vs ARM.',
     modal: { chartTypes: COLUMNAR_MODAL_TYPES, zoom: true },
     build: (_d, win, _s, c, modal) => {
       const data = win.panels.arch;
@@ -271,10 +411,10 @@ export const PANELS: PanelDef[] = [
   },
   {
     id: 'host-platform',
-    title: 'Host platform',
+    title: 'Host system',
     group: 'deployments',
-    description:
-      'Underlying NAS or server OS when detectable (Unraid, TrueNAS, Synology, Proxmox, etc.). Older snapshots report as unknown.',
+    section: 'how-it-runs',
+    description: 'NAS or server platform when we can tell (Unraid, TrueNAS, Synology, …).',
     isAvailable: (win) => win.panels.host_platform != null,
     modal: { chartTypes: COLUMNAR_MODAL_TYPES, zoom: true },
     build: (_d, win, _s, c, modal) => {
@@ -287,12 +427,48 @@ export const PANELS: PanelDef[] = [
       return barH(data.labels, data.values, 'deployments', c, isHorizontalBar(modal, true));
     },
   },
+  rangePanel('cpu-cores', 'CPU cores', 'Cores on the machine running FileBrowser.', 'system', 'cpu_cores', 'how-it-runs'),
+  rangePanel(
+    'memory-rss',
+    'FileBrowser memory',
+    'Memory used by the FileBrowser process.',
+    'system',
+    'memory_rss_mb',
+    'how-it-runs',
+  ),
+  rangePanel('memory-total', 'Host memory', 'Total RAM on the machine.', 'system', 'memory_total_mb', 'how-it-runs'),
+  {
+    id: 'version-trains',
+    title: 'Version lines over time',
+    group: 'versions',
+    section: 'versions',
+    description: 'Share of installations on each minor line (e.g. v2.0.x stable, v2.1.x beta).',
+    isAvailable: (win) => (win.panels.version_trains_ts?.labels.length ?? 0) > 0,
+    modal: { chartTypes: COMPOSITION_MODAL_TYPES, zoom: true },
+    build: (_d, win, state, c, modal) => {
+      const source = win.panels.version_trains_ts!;
+      let labels = source.labels;
+      let series = source.series;
+      if (state.versionFilter !== 'all' && source.keys) {
+        const filtered = filterVersionSeries(source.keys, series, state.versionFilter);
+        labels = filtered.labels.map((_, i) => {
+          const idx = source.keys!.indexOf(filtered.labels[i]);
+          return idx >= 0 ? source.labels[idx] : filtered.labels[i];
+        });
+        series = filtered.series;
+      }
+      if (!modal) {
+        return stackedComposition(bucketLabels(win), labels, normalizeSeriesToPercent(series), 'versions', c, 'area');
+      }
+      return buildCompositionChart(bucketLabels(win), labels, series, 'versions', c, modal, false);
+    },
+  },
   {
     id: 'versions',
-    title: 'Release adoption over time',
+    title: 'Versions over time',
     group: 'versions',
-    description:
-      'Share of the fleet on each release over the window. Stable and beta builds are separate (e.g. v2.0.0-stable vs v2.0.0-beta).',
+    section: 'versions',
+    description: 'Share of installations on each exact release.',
     modal: { chartTypes: COMPOSITION_MODAL_TYPES, zoom: true },
     build: (_d, win, state, c, modal) => {
       const { labels, series } = filterVersionSeries(
@@ -307,239 +483,213 @@ export const PANELS: PanelDef[] = [
       return buildCompositionChart(bucketLabels(win), labels, series, 'versions', c, modal, false);
     },
   },
-  {
-    id: 'auth',
-    title: 'Sign-in methods in use',
-    group: 'auth',
-    description: 'Share of deployments with each authentication option enabled.',
-    modal: { chartTypes: FLAG_MODAL_TYPES, zoom: true },
-    build: (_d, win, _s, c, modal) => buildFlagChart(win.panels.auth, 'auth', c, modal),
-  },
-  {
-    id: 'integrations',
-    title: 'Third-party integrations',
-    group: 'integrations',
-    description: 'Media streaming, OnlyOffice, and hardware acceleration uptake.',
-    modal: { chartTypes: FLAG_MODAL_TYPES, zoom: true },
-    build: (_d, win, _s, c, modal) => buildFlagChart(win.panels.integrations, 'integrations', c, modal),
-  },
-  {
-    id: 'features',
-    title: 'Optional product features',
-    group: 'features',
-    description: 'TLS, activity logging, preview settings, and other toggles across deployments.',
-    modal: { chartTypes: FLAG_MODAL_TYPES, zoom: true },
-    build: (_d, win, _s, c, modal) => buildFlagChart(win.panels.features, 'features', c, modal),
-  },
-  timeseriesPanel(
-    'avg-files',
-    'Indexed file volume',
-    'Typical number of files per deployment over the selected window.',
-    'indexing',
-    'avg_total_files',
-    'Files',
-  ),
-  timeseriesPanel(
-    'avg-dirs',
-    'Indexed folder volume',
-    'Typical directory count per deployment as libraries grow or shrink.',
-    'indexing',
-    'avg_total_dirs',
-    'Folders',
-  ),
-  timeseriesPanel(
-    'quick-scan',
-    'Quick scan duration',
-    'How long incremental index scans take on average, in seconds.',
-    'indexing',
-    'avg_quick_scan_seconds',
-    'Quick scan (s)',
-  ),
-  timeseriesPanel(
-    'full-scan',
-    'Full scan duration',
-    'How long full library rescans take on average, in seconds.',
-    'indexing',
-    'avg_full_scan_seconds',
-    'Full scan (s)',
-  ),
-  rangePanel(
-    'cpu-cores',
-    'Host CPU capacity',
-    'Number of cores on machines running FileBrowser.',
-    'system',
-    'cpu_cores',
-  ),
-  rangePanel(
-    'memory-rss',
-    'Process memory footprint',
-    'RSS memory used by the FileBrowser process, in megabytes.',
-    'system',
-    'memory_rss_mb',
-  ),
-  rangePanel(
-    'memory-total',
-    'Available system memory',
-    'Total RAM on the host, in megabytes.',
-    'system',
-    'memory_total_mb',
-  ),
-  rangePanel(
-    'main-db',
-    'Main database size',
-    'On-disk size of the primary FileBrowser database.',
-    'storage',
-    'main_db_bytes',
-  ),
-  rangePanel(
-    'index-db',
-    'Search index size',
-    'On-disk size of the file search index database.',
-    'storage',
-    'index_db_bytes',
-  ),
-  rangePanel(
-    'total-files-range',
-    'Library size (files)',
-    'How many files deployments are managing, grouped by scale.',
-    'storage',
-    'total_files',
-  ),
-  rangePanel(
-    'total-dirs-range',
-    'Library size (folders)',
-    'How many directories deployments are managing, grouped by scale.',
-    'storage',
-    'total_dirs',
-  ),
-  rangePanel(
-    'sources-enabled',
-    'Configured storage sources',
-    'How many file sources each deployment has connected.',
-    'counts',
-    'sources_enabled',
-  ),
-  rangePanel(
-    'sources-indexed',
-    'Indexed storage sources',
-    'How many connected sources have a search index built.',
-    'indexing',
-    'sources_indexed',
-  ),
-  timeseriesPanel(
-    'avg-sources-indexed',
-    'Indexed sources per deployment',
-    'Average number of sources with a built search index over time.',
-    'indexing',
-    'avg_sources_indexed',
-    'Indexed sources',
-  ),
-  rangePanel(
-    'users-total',
-    'User accounts per deployment',
-    'Distribution of local user account counts across the fleet.',
-    'counts',
-    'users_total',
-  ),
-  timeseriesPanel(
-    'avg-users',
-    'Users per deployment',
-    'Average number of user accounts per deployment over time.',
-    'counts',
-    'avg_users',
-    'Users',
-  ),
-  rangePanel(
-    'shares-active',
-    'Active shares per deployment',
-    'How many file shares each deployment currently has active.',
-    'counts',
-    'shares_active',
-  ),
-  timeseriesPanel(
-    'avg-shares',
-    'Shares per deployment',
-    'Average number of active shares per deployment over time.',
-    'counts',
-    'avg_shares',
-    'Shares',
-  ),
-  rangePanel(
-    'access-rules-total',
-    'Access rules per deployment',
-    'How many path-level access rules deployments have configured.',
-    'counts',
-    'access_rules_total',
-  ),
-  timeseriesPanel(
-    'avg-access-rules',
-    'Access rules per deployment',
-    'Average number of access rules per deployment over time.',
-    'counts',
-    'avg_access_rules',
-    'Access rules',
-  ),
-  rangePanel(
-    'sources-read-only',
-    'Read-only sources',
-    'How many connected sources are mounted read-only.',
-    'counts',
-    'sources_read_only',
-  ),
-  rangePanel(
-    'sources-private',
-    'Private sources',
-    'How many connected sources are marked private.',
-    'counts',
-    'sources_private',
-  ),
-  rangePanel(
-    'custom-themes',
-    'Custom themes',
-    'How many custom UI themes each deployment has defined.',
-    'counts',
-    'custom_themes',
-  ),
-  timeseriesPanel(
-    'avg-main-db',
-    'Main database size trend',
-    'Average on-disk size of the primary FileBrowser database over time.',
-    'storage',
-    'avg_main_db_bytes',
-    'Main DB (bytes)',
-  ),
-  timeseriesPanel(
-    'avg-index-db',
-    'Search index size trend',
-    'Average on-disk size of the file search index over time.',
-    'storage',
-    'avg_index_db_bytes',
-    'Index DB (bytes)',
-  ),
-  rangePanel(
-    'memory-pressure',
-    'Memory pressure',
-    'FileBrowser process memory as a percentage of total host RAM.',
-    'system',
-    'memory_pressure_pct',
-  ),
-  rangePanel(
-    'scan-cost-per-10k',
-    'Full scan cost per 10k files',
-    'How long a full library rescan takes per 10,000 indexed files.',
-    'indexing',
-    'scan_cost_per_10k',
-  ),
   compositionTimeseriesPanel(
     'version-channel-share',
-    'Stable vs beta share',
-    'Share of reporting installations on stable versus beta releases over time.',
+    'Stable vs beta',
+    'Share of installations on stable vs beta.',
     'versions',
     [
       { key: 'stable_share_pct', label: 'Stable' },
       { key: 'beta_share_pct', label: 'Beta' },
     ],
+    'versions',
     { alreadyPercent: true },
+  ),
+  {
+    id: 'features',
+    title: 'Features',
+    group: 'features',
+    section: 'features',
+    description: 'Optional settings such as TLS, activity log, and previews.',
+    modal: { chartTypes: FLAG_MODAL_TYPES, zoom: true },
+    build: (_d, win, _s, c, modal) => buildFlagChart(win.panels.features, 'features', c, modal),
+  },
+  {
+    id: 'integrations',
+    title: 'Integrations',
+    group: 'integrations',
+    section: 'features',
+    description: 'Media, OnlyOffice, and hardware acceleration.',
+    modal: { chartTypes: FLAG_MODAL_TYPES, zoom: true },
+    build: (_d, win, _s, c, modal) => buildFlagChart(win.panels.integrations, 'integrations', c, modal),
+  },
+  rangePanel(
+    'custom-themes',
+    'Custom themes',
+    'How many custom themes an installation defines.',
+    'counts',
+    'custom_themes',
+    'features',
+  ),
+  {
+    id: 'auth',
+    title: 'Authentication methods',
+    group: 'auth',
+    section: 'users-sharing',
+    description: 'How installations sign people in.',
+    modal: { chartTypes: FLAG_MODAL_TYPES, zoom: true },
+    build: (_d, win, _s, c, modal) => buildFlagChart(win.panels.auth, 'auth', c, modal),
+  },
+  rangePanel(
+    'users-total',
+    'Users',
+    'How many user accounts installations have.',
+    'counts',
+    'users_total',
+    'users-sharing',
+  ),
+  timeseriesPanel(
+    'avg-users',
+    'Typical users over time',
+    'Typical (median) user accounts per installation.',
+    'counts',
+    'avg_users',
+    'Users',
+    'users-sharing',
+    { integerTicks: true },
+  ),
+  rangePanel(
+    'shares-active',
+    'Shares',
+    'How many active shares installations have.',
+    'counts',
+    'shares_active',
+    'users-sharing',
+  ),
+  timeseriesPanel(
+    'avg-shares',
+    'Typical shares over time',
+    'Typical (median) active shares per installation.',
+    'counts',
+    'avg_shares',
+    'Shares',
+    'users-sharing',
+    { integerTicks: true },
+  ),
+  rangePanel(
+    'access-rules-total',
+    'Access rules',
+    'How many path access rules installations have.',
+    'counts',
+    'access_rules_total',
+    'users-sharing',
+  ),
+  timeseriesPanel(
+    'avg-access-rules',
+    'Typical access rules over time',
+    'Typical (median) access rules per installation.',
+    'counts',
+    'avg_access_rules',
+    'Access rules',
+    'users-sharing',
+    { integerTicks: true },
+  ),
+  rangePanel(
+    'sources-enabled',
+    'Total Sources',
+    'How many storage sources each installation has.',
+    'counts',
+    'sources_enabled',
+    'sources',
+  ),
+  groupedRangePanel(
+    'sources-features-enabled',
+    'Source features enabled',
+    'Writable, share-enabled, and indexed source counts per installation. Each range bucket shows three bars side by side.',
+    'counts',
+    'sources_writable',
+    [
+      { label: 'Writable', rangeKey: 'sources_writable' },
+      { label: 'Share enabled', rangeKey: 'sources_public' },
+      { label: 'Indexed', rangeKey: 'sources_indexed' },
+    ],
+    'sources',
+    {
+      optionalRangeKeys: ['sources_writable', 'sources_public'],
+    },
+  ),
+  groupedRangePanel(
+    'sources-features-disabled',
+    'Source features disabled',
+    'Read-only, private, and non-indexed source counts per installation. Each range bucket shows three bars side by side.',
+    'counts',
+    'sources_read_only',
+    [
+      { label: 'Read-only', rangeKey: 'sources_read_only' },
+      { label: 'Private', rangeKey: 'sources_private' },
+      { label: 'Indexing disabled', rangeKey: 'sources_without_index' },
+    ],
+    'sources',
+    {
+      optionalRangeKeys: ['sources_without_index'],
+    },
+  ),
+  multiTimeseriesPanel(
+    'library-size-over-time',
+    'Typical library size over time',
+    'Typical (median) indexed files and folders per installation.',
+    'indexing',
+    [
+      { key: 'avg_total_files', label: 'Files' },
+      { key: 'avg_total_dirs', label: 'Folders' },
+    ],
+    'sources',
+    { integerTicks: true },
+  ),
+  groupedRangePanel(
+    'library-size',
+    'Library size',
+    'Indexed files and folders per installation. Each size bucket shows two bars side by side (files use the bucket scale on the axis).',
+    'storage',
+    'total_files',
+    [
+      { label: 'Files', rangeKey: 'total_files' },
+      { label: 'Folders', rangeKey: 'total_dirs' },
+    ],
+    'sources',
+  ),
+  multiTimeseriesPanel(
+    'scan-time-over-time',
+    'Scan time over time',
+    'Typical quick (incremental) and full library rescan duration.',
+    'indexing',
+    [
+      { key: 'avg_quick_scan_seconds', label: 'Quick scan' },
+      { key: 'avg_full_scan_seconds', label: 'Full scan' },
+    ],
+    'sources',
+  ),
+  rangePanel(
+    'scan-cost-per-10k',
+    'Time per 10,000 files',
+    'How long a full rescan takes per 10,000 files.',
+    'indexing',
+    'scan_cost_per_10k',
+    'sources',
+  ),
+  groupedRangePanel(
+    'database-storage-size',
+    'Database size',
+    'Main database and search index size per installation. Each size bucket shows two bars side by side (main DB uses the bucket scale on the axis).',
+    'storage',
+    'main_db_bytes',
+    [
+      { label: 'Main database', rangeKey: 'main_db_bytes' },
+      { label: 'Search index', rangeKey: 'index_db_bytes' },
+    ],
+    'sources',
+  ),
+  multiTimeseriesPanel(
+    'database-size-over-time',
+    'Database size over time',
+    'Typical main database and search index size over the selected range.',
+    'storage',
+    [
+      { key: 'avg_main_db_bytes', label: 'Main database' },
+      { key: 'avg_index_db_bytes', label: 'Search index' },
+    ],
+    'sources',
+    { formatter: formatBytes },
   ),
 ];
 

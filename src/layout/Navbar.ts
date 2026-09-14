@@ -1,12 +1,9 @@
 import { ExpandDropdown } from '../components/expandDropdown';
 import type { AppState } from '../app/state';
 import type { WindowKey } from '../types/dashboard-v1';
+import { windowPrimaryLabel } from '../utils/windowRange';
 
-const WINDOW_OPTIONS = [
-  { value: '7d', label: 'Last 7 days' },
-  { value: '90d', label: 'Last 90 days' },
-  { value: '1y', label: 'Last year' },
-] as const;
+const WINDOW_KEYS: WindowKey[] = ['7d', '90d', '1y'];
 
 export interface NavbarCallbacks {
   onWindowChange: (w: WindowKey) => void;
@@ -30,7 +27,7 @@ export class Navbar {
           <span class="brand-mark">FB</span>
           <div>
             <h1>FileBrowser Analytics</h1>
-            <p class="brand-sub">Usage dashboard</p>
+            <p class="brand-sub">How FileBrowser is used</p>
           </div>
         </div>
         <p class="navbar-meta"></p>
@@ -42,7 +39,7 @@ export class Navbar {
     this.metaEl = this.el.querySelector('.navbar-meta')!;
 
     this.windowDropdown = new ExpandDropdown(
-      [...WINDOW_OPTIONS],
+      WINDOW_KEYS.map((value) => ({ value, label: windowPrimaryLabel(value) })),
       '90d',
       (v) => callbacks.onWindowChange(v as WindowKey),
       { compact: true, ariaLabel: 'Time range' },
@@ -70,13 +67,16 @@ export class Navbar {
   update(state: AppState): void {
     const data = state.data;
     if (data) {
-      this.metaEl.textContent = `Data through ${data.data_through} · Updated ${new Date(data.generated_at).toLocaleString()}`;
+      this.metaEl.textContent = `Updated weekly · Through ${data.data_through}`;
     } else {
       this.metaEl.textContent = '';
     }
 
-    const windowLabel = WINDOW_OPTIONS.find((o) => o.value === state.window)?.label ?? state.window;
-    this.windowDropdown.setValue(state.window, windowLabel);
+    const windowOptions = WINDOW_KEYS.map((key) => ({
+      value: key,
+      label: windowPrimaryLabel(key),
+    }));
+    this.windowDropdown.setOptions(windowOptions, state.window);
 
     const trains = state.data?.windows[state.window]?.summary.version_trains ?? [];
     const versionOptions = trains.map((t) => ({

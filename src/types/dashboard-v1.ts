@@ -67,6 +67,12 @@ export interface WindowPanels {
     labels: string[];
     series: number[][]; // [versionIndex][bucketIndex]
   };
+  /** Minor-line rollup (v2.0.x stable); omitted in older dashboard JSON. */
+  version_trains_ts?: {
+    labels: string[];
+    keys?: string[];
+    series: number[][];
+  };
   timeseries: {
     active_installations: number[];
     avg_total_files: number[];
@@ -76,7 +82,7 @@ export interface WindowPanels {
     avg_users: number[];
     avg_shares: number[];
     avg_access_rules: number[];
-    avg_sources_indexed: number[];
+    avg_sources_indexed?: number[];
     avg_main_db_bytes: number[];
     avg_index_db_bytes: number[];
     stable_share_pct: number[];

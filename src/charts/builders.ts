@@ -1,4 +1,4 @@
-import type { ChartConfiguration } from 'chart.js';
+import type { ChartConfiguration, ChartOptions } from 'chart.js';
 import type { ColumnarBreakdown, FlagBreakdown, WindowData } from '../types/dashboard-v1';
 import { matchesVersionTrain } from '../utils/versions';
 import {
@@ -10,8 +10,59 @@ import {
   segmentBorderColors,
 } from './chartTheme';
 
+export type ValueFormatter = (value: number) => string;
+
 function col(cfg: ChartConfiguration): ChartConfiguration {
   return cfg;
+}
+
+function yTickOptions(formatter?: ValueFormatter, integerTicks?: boolean) {
+  return {
+    ...(integerTicks ? { precision: 0, stepSize: 1 } : {}),
+    ...(formatter
+      ? {
+          callback: (value: string | number) => formatter(typeof value === 'number' ? value : Number(value)),
+        }
+      : {}),
+  };
+}
+
+export function withValueFormat(
+  options: ChartOptions,
+  formatter?: ValueFormatter,
+  integerTicks?: boolean,
+): ChartOptions {
+  if (!formatter && !integerTicks) return options;
+  const y = options.scales?.y ?? {};
+  const ticks = { ...(typeof y === 'object' && y && 'ticks' in y ? y.ticks : {}), ...yTickOptions(formatter, integerTicks) };
+  return {
+    ...options,
+    scales: {
+      ...options.scales,
+      y: {
+        ...(typeof y === 'object' ? y : {}),
+        ticks,
+      },
+    },
+    plugins: {
+      ...options.plugins,
+      tooltip: {
+        ...options.plugins?.tooltip,
+        callbacks: {
+          ...options.plugins?.tooltip?.callbacks,
+          ...(formatter
+            ? {
+                label: (ctx) => {
+                  const raw = typeof ctx.parsed.y === 'number' ? ctx.parsed.y : Number(ctx.parsed.y ?? 0);
+                  const name = ctx.dataset.label ? `${ctx.dataset.label}: ` : '';
+                  return `${name}${formatter(raw)}`;
+                },
+              }
+            : {}),
+        },
+      },
+    },
+  };
 }
 
 export function barH(
@@ -278,8 +329,18 @@ export function lineSingle(
   group: string,
   compact: boolean,
   fill = true,
+  formatter?: ValueFormatter,
+  integerTicks?: boolean,
 ): ChartConfiguration {
   const color = chartColors(group, 1)[0];
+  const options = withValueFormat(
+    {
+      ...baseOptions(compact),
+      plugins: { ...baseOptions(compact).plugins, legend: { display: !compact } },
+    },
+    formatter,
+    integerTicks,
+  );
   return col({
     type: 'line',
     data: {
@@ -294,10 +355,7 @@ export function lineSingle(
         pointRadius: compact ? 2 : 4,
       }],
     },
-    options: {
-      ...baseOptions(compact),
-      plugins: { ...baseOptions(compact).plugins, legend: { display: !compact } },
-    },
+    options,
   });
 }
 
@@ -308,10 +366,18 @@ export function buildTimeseriesChart(
   group: string,
   compact: boolean,
   chartType: 'line' | 'area' | 'bar' | 'bar-h' = 'line',
+  formatter?: ValueFormatter,
+  integerTicks?: boolean,
 ): ChartConfiguration {
-  if (chartType === 'bar') return barH(bucketLabels, values, group, compact, false, true);
-  if (chartType === 'bar-h') return barH(bucketLabels, values, group, compact, true, true);
-  return lineSingle(bucketLabels, values, label, group, compact, chartType === 'area');
+  if (chartType === 'bar') {
+    const cfg = barH(bucketLabels, values, group, compact, false, true);
+    return { ...cfg, options: withValueFormat(cfg.options ?? {}, formatter, integerTicks) };
+  }
+  if (chartType === 'bar-h') {
+    const cfg = barH(bucketLabels, values, group, compact, true, true);
+    return { ...cfg, options: withValueFormat(cfg.options ?? {}, formatter, integerTicks) };
+  }
+  return lineSingle(bucketLabels, values, label, group, compact, chartType === 'area', formatter, integerTicks);
 }
 
 export function rangeBar(

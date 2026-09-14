@@ -2,7 +2,8 @@ import { loadDashboard } from '../data/loadDashboard';
 import { Navbar } from '../layout/Navbar';
 import { PanelCard } from '../panels/PanelCard';
 import { PanelModal } from '../panels/Modal';
-import { PANELS } from '../panels/registry';
+import { PANELS, type PanelDef } from '../panels/registry';
+import { SECTION_ORDER, SECTION_TITLES } from '../panels/sections';
 import type { WindowKey } from '../types/dashboard-v1';
 import { createInitialState, type AppState } from './state';
 import { initTheme, toggleTheme } from '../theme/theme';
@@ -14,7 +15,7 @@ export class App {
   private navbar: Navbar;
   private modal: PanelModal;
   private summaryEl: HTMLElement;
-  private gridEl: HTMLElement;
+  private bodyEl: HTMLElement;
   private cards: PanelCard[] = [];
 
   constructor(root: HTMLElement, theme = initTheme()) {
@@ -48,8 +49,8 @@ export class App {
     this.summaryEl = document.createElement('section');
     this.summaryEl.className = 'summary-row';
 
-    this.gridEl = document.createElement('section');
-    this.gridEl.className = 'panel-grid';
+    this.bodyEl = document.createElement('div');
+    this.bodyEl.className = 'dashboard-body';
   }
 
   async start(): Promise<void> {
@@ -72,7 +73,7 @@ export class App {
     this.root.classList.add('dashboard-shell');
     this.root.appendChild(this.navbar.el);
     this.root.appendChild(this.summaryEl);
-    this.root.appendChild(this.gridEl);
+    this.root.appendChild(this.bodyEl);
     document.body.appendChild(this.modal.el);
   }
 
@@ -94,15 +95,11 @@ export class App {
 
     this.summaryEl.innerHTML = `
       <div class="stat-card">
-        <span class="stat-label">Unique installations</span>
+        <span class="stat-label">Installations</span>
         <span class="stat-value">${win.summary.unique_installations.toLocaleString()}</span>
       </div>
       <div class="stat-card">
-        <span class="stat-label">Total snapshots</span>
-        <span class="stat-value">${win.summary.total_snapshots.toLocaleString()}</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Most common version</span>
+        <span class="stat-label">Most used version</span>
         <span class="stat-value stat-version">${topVersion}</span>
       </div>
     `;
@@ -110,24 +107,64 @@ export class App {
     this.renderPanels();
   }
 
-  private renderPanels(): void {
+  private addCard(def: PanelDef): void {
     const data = this.state.data;
     if (!data) return;
     const win = data.windows[this.state.window];
+    if (def.isAvailable && !def.isAvailable(win)) return;
+    const card = new PanelCard(def, (id) => {
+      this.state.expandedPanelId = id;
+      this.modal.open(id, data, win, this.state);
+    });
+    card.render(data, win, this.state);
+    this.cards.push(card);
+  }
+
+  private renderPanels(): void {
+    const data = this.state.data;
+    if (!data) return;
 
     this.cards.forEach((c) => c.destroy());
     this.cards = [];
-    this.gridEl.innerHTML = '';
+    this.bodyEl.innerHTML = '';
 
-    for (const def of PANELS) {
-      if (def.isAvailable && !def.isAvailable(win)) continue;
-      const card = new PanelCard(def, (id) => {
-        this.state.expandedPanelId = id;
-        this.modal.open(id, data, win, this.state);
+    const hero = PANELS.find((p) => p.hero);
+    if (hero) {
+      const heroGrid = document.createElement('div');
+      heroGrid.className = 'panel-grid panel-grid--lead';
+      this.addCard(hero);
+      const card = this.cards[this.cards.length - 1];
+      if (card) {
+        card.el.classList.add('panel-card--hero');
+        heroGrid.appendChild(card.el);
+        this.bodyEl.appendChild(heroGrid);
+      }
+    }
+
+    for (const section of SECTION_ORDER) {
+      const sectionPanels = PANELS.filter((p) => !p.hero && p.section === section);
+      const available = sectionPanels.filter((p) => {
+        const win = data.windows[this.state.window];
+        return !p.isAvailable || p.isAvailable(win);
       });
-      card.render(data, win, this.state);
-      this.cards.push(card);
-      this.gridEl.appendChild(card.el);
+      if (!available.length) continue;
+
+      const sectionEl = document.createElement('section');
+      sectionEl.className = 'dashboard-section';
+      const header = document.createElement('div');
+      header.className = 'dashboard-section-header';
+      header.innerHTML = `<h2 class="dashboard-section-title">${SECTION_TITLES[section]}</h2>`;
+      sectionEl.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'panel-grid';
+      for (const def of available) {
+        this.addCard(def);
+        grid.appendChild(this.cards[this.cards.length - 1].el);
+      }
+      sectionEl.appendChild(grid);
+
+      this.bodyEl.appendChild(sectionEl);
     }
   }
 }
