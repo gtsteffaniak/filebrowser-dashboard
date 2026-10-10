@@ -14,6 +14,8 @@ const CSP = [
 
 export default defineConfig({
   base: '/',
+  server: { port: 5173, strictPort: true },
+  preview: { port: 5173, strictPort: true },
   build: {
     // Keep the built index.html free of inline scripts (required by script-src 'self').
     modulePreload: { polyfill: false },
