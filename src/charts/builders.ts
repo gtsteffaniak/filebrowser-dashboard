@@ -18,7 +18,8 @@ function col(cfg: ChartConfiguration): ChartConfiguration {
 
 function yTickOptions(formatter?: ValueFormatter, integerTicks?: boolean) {
   return {
-    ...(integerTicks ? { precision: 0, stepSize: 1 } : {}),
+    // Do not use stepSize: 1 — large medians (e.g. file counts) blow tick limits.
+    ...(integerTicks ? { precision: 0, maxTicksLimit: 10 } : {}),
     ...(formatter
       ? {
           callback: (value: string | number) => formatter(typeof value === 'number' ? value : Number(value)),

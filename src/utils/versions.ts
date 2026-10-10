@@ -1,4 +1,67 @@
+import type { WindowData } from '../types/dashboard-v1';
+
 const VERSION_TRAIN_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+-(stable|beta)$/;
+const VERSION_TRAIN_KEY_RE = /^v?(\d+\.\d+)\.\d+-(stable|beta)$/;
+
+export interface VersionTrainsTimeseries {
+  labels: string[];
+  keys?: string[];
+  series: number[][];
+}
+
+/** Minor-line train key (e.g. v2.0.x-beta), matching dashboard builder. */
+export function versionTrainKey(version: string): string {
+  const m = (version || '').match(VERSION_TRAIN_KEY_RE);
+  if (!m) return 'other';
+  return `v${m[1]}.x-${m[2]}`;
+}
+
+export function versionTrainLabel(trainKey: string): string {
+  if (trainKey === 'other') return 'Other';
+  return trainKey.replace('.x-stable', '.x stable').replace('.x-beta', '.x beta');
+}
+
+/** Roll patch-level version timeseries into minor-line trains (builder parity). */
+export function rollupVersionTrainsTs(
+  versions: { labels: string[]; series: number[][] },
+  topN = 12,
+): VersionTrainsTimeseries | null {
+  if (!versions.labels.length || !versions.series.length) return null;
+
+  const bucketCount = versions.series[0]?.length ?? 0;
+  const totals = new Map<string, number>();
+  const byTrain = new Map<string, number[]>();
+
+  for (let i = 0; i < versions.labels.length; i++) {
+    const train = versionTrainKey(versions.labels[i]);
+    const row = versions.series[i];
+    const sum = row.reduce((a, b) => a + b, 0);
+    totals.set(train, (totals.get(train) ?? 0) + sum);
+    if (!byTrain.has(train)) byTrain.set(train, Array(bucketCount).fill(0));
+    const bucket = byTrain.get(train)!;
+    for (let b = 0; b < bucketCount; b++) bucket[b] += row[b] ?? 0;
+  }
+
+  const topTrains = [...totals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([key]) => key);
+
+  if (!topTrains.length) return null;
+
+  return {
+    labels: topTrains.map(versionTrainLabel),
+    keys: topTrains,
+    series: topTrains.map((key) => byTrain.get(key) ?? []),
+  };
+}
+
+/** Prefer builder output; fall back to rollup from patch versions panel. */
+export function resolveVersionTrainsTs(win: WindowData): VersionTrainsTimeseries | null {
+  const built = win.panels.version_trains_ts;
+  if (built?.labels?.length) return built;
+  return rollupVersionTrainsTs(win.panels.versions);
+}
 
 /** Match a version label against a train key like `v2.0.x-stable` or `all`. */
 export function matchesVersionTrain(version: string, trainKey: string): boolean {

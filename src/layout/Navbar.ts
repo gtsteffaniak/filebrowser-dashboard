@@ -1,4 +1,4 @@
-import { ExpandDropdown } from '../components/expandDropdown';
+import { ExpandDropdown, closeExpandDropdown } from '../components/expandDropdown';
 import type { AppState } from '../app/state';
 import type { WindowKey } from '../types/dashboard-v1';
 import { windowPrimaryLabel } from '../utils/windowRange';
@@ -65,6 +65,9 @@ export class Navbar {
   }
 
   update(state: AppState): void {
+    closeExpandDropdown(this.windowDropdown.el);
+    closeExpandDropdown(this.versionDropdown.el);
+
     const data = state.data;
     if (data) {
       this.metaEl.textContent = `Updated weekly · Through ${data.data_through}`;

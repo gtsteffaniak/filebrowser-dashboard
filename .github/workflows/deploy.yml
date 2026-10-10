@@ -8,6 +8,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     if: github.repository == 'quantumx-apps/filebrowser-dashboard'
+    env:
+      PROXY_HOST: ${{ secrets.PROXY_HOST }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,8 +23,8 @@ jobs:
 
       # Requires secrets: PROXY_HOST, PROXY_USER, PROXY_SSH_KEY
       - name: Deploy to proxy host
-        if: ${{ secrets.PROXY_HOST != '' }}
-        uses: easingthemes/ssh-deploy@v5
+        if: ${{ env.PROXY_HOST != '' }}
+        uses: easingthemes/ssh-deploy@922253577e23ce0edbfdbf819f0e1ceaecabc61a # v5.1.2
         with:
           SSH_PRIVATE_KEY: ${{ secrets.PROXY_SSH_KEY }}
           REMOTE_HOST: ${{ secrets.PROXY_HOST }}

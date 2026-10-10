@@ -2,6 +2,8 @@
  * Docs ExpandDropdown — vanilla overlay panel (matches filebrowserDocsTheme expand-dropdown.js)
  */
 
+import { escapeHtml } from '../utils/dom';
+
 const EXPAND_OPEN_MS = 300;
 const EXPAND_CLOSE_MS = 150;
 const ROOT_SELECTOR = '.dashboard-shell, .modal';
@@ -175,12 +177,14 @@ function finishClose(dropdown: HTMLElement): void {
   trigger?.setAttribute('aria-expanded', 'false');
 }
 
-function closeDropdown(dropdown: HTMLElement): void {
+function closeDropdown(dropdown: HTMLElement, opts?: { immediate?: boolean }): void {
   const s = state(dropdown);
-  if (!dropdown.classList.contains('expand-dropdown--open') || s.closing) return;
+  if (!dropdown.classList.contains('expand-dropdown--open')) return;
+  if (s.closing && !opts?.immediate) return;
 
   const body = s.body;
-  if (!body) {
+  if (!body || opts?.immediate) {
+    s.closing = false;
     finishClose(dropdown);
     return;
   }
@@ -248,6 +252,10 @@ function openDropdown(dropdown: HTMLElement): void {
 }
 
 function toggleDropdown(dropdown: HTMLElement): void {
+  const s = state(dropdown);
+  if (s.closing) {
+    finishClose(dropdown);
+  }
   if (dropdown.classList.contains('expand-dropdown--open')) {
     closeDropdown(dropdown);
   } else {
@@ -268,7 +276,7 @@ function bindOptions(dropdown: HTMLElement, onSelect?: (value: string) => void):
       dropdown.querySelectorAll('.menu-option').forEach((opt) => {
         opt.classList.toggle('menu-option--selected', opt === option);
       });
-      closeDropdown(dropdown);
+      closeDropdown(dropdown, { immediate: true });
       onSelect?.(value);
     });
   });
@@ -320,14 +328,14 @@ function renderOptions(list: HTMLElement, options: DropdownOption[], selected: s
   list.innerHTML = options
     .map(
       (opt) =>
-        `<button type="button" class="action menu-option${opt.value === selected ? ' menu-option--selected' : ''}" role="option" data-value="${opt.value}">${opt.label}</button>`,
+        `<button type="button" class="action menu-option${opt.value === selected ? ' menu-option--selected' : ''}" role="option" data-value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</button>`,
     )
     .join('');
 }
 
 /** Close an open expand dropdown and restore its panel to the DOM. */
 export function closeExpandDropdown(dropdown: HTMLElement): void {
-  closeDropdown(dropdown);
+  closeDropdown(dropdown, { immediate: true });
 }
 
 export class ExpandDropdown {
@@ -355,7 +363,7 @@ export class ExpandDropdown {
     this.el.innerHTML = `
       <div class="expand-dropdown-anchor menu-panel border-radius">
         <button type="button" class="action expand-dropdown-trigger" aria-expanded="false">
-          <span class="expand-dropdown-trigger-label">${selectedLabel}</span>
+          <span class="expand-dropdown-trigger-label">${escapeHtml(selectedLabel)}</span>
           <i class="material-icons expand-dropdown-chevron" aria-hidden="true">expand_more</i>
         </button>
       </div>

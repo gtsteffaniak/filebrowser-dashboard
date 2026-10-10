@@ -31,7 +31,7 @@ import {
 import type { DashboardSection } from './sections';
 import { formatHostPlatformBreakdown, formatOsBreakdown } from '../utils/labels';
 import { formatBytes } from '../utils/format';
-import { filterVersionSeries } from '../utils/versions';
+import { filterVersionSeries, resolveVersionTrainsTs } from '../utils/versions';
 
 function modalChartType(modal?: ModalBuildOptions, types?: ModalChartType[]): ModalChartType | undefined {
   return modal?.chartType ?? types?.[0];
@@ -443,10 +443,10 @@ export const PANELS: PanelDef[] = [
     group: 'versions',
     section: 'versions',
     description: 'Share of installations on each minor line (e.g. v2.0.x stable, v2.1.x beta).',
-    isAvailable: (win) => (win.panels.version_trains_ts?.labels.length ?? 0) > 0,
+    isAvailable: (win) => (resolveVersionTrainsTs(win)?.labels.length ?? 0) > 0,
     modal: { chartTypes: COMPOSITION_MODAL_TYPES, zoom: true },
     build: (_d, win, state, c, modal) => {
-      const source = win.panels.version_trains_ts!;
+      const source = resolveVersionTrainsTs(win)!;
       let labels = source.labels;
       let series = source.series;
       if (state.versionFilter !== 'all' && source.keys) {
