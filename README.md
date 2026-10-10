@@ -19,6 +19,7 @@ Or use npm directly: `npm run dev`, `npm run build`, etc.
 | Variable | Default (dev) | Description |
 |----------|---------------|-------------|
 | `VITE_USE_LOCAL_DATA` | `true` | Load `public/dashboard.json` instead of remote |
+| `VITE_DATA_URL` | unset | Absolute URL for dashboard JSON; overrides `config.json` `dataUrl` when `VITE_USE_LOCAL_DATA` is not `true` (set by `.env.remote` for `make dev-remote`) |
 
 ## Build
 
@@ -31,7 +32,9 @@ Deploy `dist/` to `/var/www/dashboard/` on the proxy host.
 
 ## Data
 
-Production loads `/v1/latest.json` from the same origin (proxied from S3). The JSON is built daily by the `dashboard-builder` Lambda in [infra-cloud](https://github.com/quantumx-apps/infra-cloud).
+Production loads `https://api.filebrowserquantum.com/v1/dashboard/latest.json` (from `public/config.json` `dataUrl`), which nginx proxies+caches from an IP-restricted S3 bucket. Dated snapshots live at `.../v1/dashboard/<YYYY-MM-DD>.json` and the version list at `.../v1/dashboard/index.json`. The JSON is built weekly by the `dashboard-builder` Lambda in [infra-cloud](https://github.com/quantumx-apps/infra-cloud).
+
+`make dev-remote` runs `vite --mode remote`, which loads `.env.remote` (`VITE_USE_LOCAL_DATA=false` + `VITE_DATA_URL` pointing at the production URL). `VITE_DATA_URL` takes precedence over `config.json` `dataUrl`.
 
 Schema: `schema/dashboard-v1.schema.json` (TODO) — see `fixtures/dashboard.sample.json` for reference.
 

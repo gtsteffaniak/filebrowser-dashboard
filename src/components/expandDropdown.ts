@@ -2,6 +2,8 @@
  * Docs ExpandDropdown — vanilla overlay panel (matches filebrowserDocsTheme expand-dropdown.js)
  */
 
+import { escapeHtml } from '../utils/dom';
+
 const EXPAND_OPEN_MS = 300;
 const EXPAND_CLOSE_MS = 150;
 const ROOT_SELECTOR = '.dashboard-shell, .modal';
@@ -320,7 +322,7 @@ function renderOptions(list: HTMLElement, options: DropdownOption[], selected: s
   list.innerHTML = options
     .map(
       (opt) =>
-        `<button type="button" class="action menu-option${opt.value === selected ? ' menu-option--selected' : ''}" role="option" data-value="${opt.value}">${opt.label}</button>`,
+        `<button type="button" class="action menu-option${opt.value === selected ? ' menu-option--selected' : ''}" role="option" data-value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</button>`,
     )
     .join('');
 }
@@ -355,7 +357,7 @@ export class ExpandDropdown {
     this.el.innerHTML = `
       <div class="expand-dropdown-anchor menu-panel border-radius">
         <button type="button" class="action expand-dropdown-trigger" aria-expanded="false">
-          <span class="expand-dropdown-trigger-label">${selectedLabel}</span>
+          <span class="expand-dropdown-trigger-label">${escapeHtml(selectedLabel)}</span>
           <i class="material-icons expand-dropdown-chevron" aria-hidden="true">expand_more</i>
         </button>
       </div>

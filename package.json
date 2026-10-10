@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:remote": "VITE_USE_LOCAL_DATA=false vite",
+    "dev:remote": "vite --mode remote",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

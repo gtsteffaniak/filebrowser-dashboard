@@ -542,7 +542,13 @@ function buckets1y() {
     'Jul 2026',
     'Aug 2026',
     'Sep 2026',
-  ].map((label, i) => ({ key: `m${i}`, label, start: '2025-10-01', end: DATA_THROUGH }));
+  ].map((label, i) => {
+    const first = new Date(Date.UTC(2025, 9 + i, 1));
+    const last = new Date(Date.UTC(2025, 10 + i, 0));
+    const start = first.toISOString().slice(0, 10);
+    const monthEnd = last.toISOString().slice(0, 10);
+    return { key: `m${i}`, label, start, end: monthEnd < DATA_THROUGH ? monthEnd : DATA_THROUGH };
+  });
 }
 
 function series(n, base, step = 3) {
@@ -577,14 +583,15 @@ function scaleToTotal(weights, target) {
 
 /** Version adoption over time: v2 stable grows, legacy shrinks. */
 function versionAdoptionSeries(bucketCount, scale) {
-  const labels = ['v2.0.0-stable', 'v2.0.0-beta', 'v1.5.2-stable', 'v1.5.1-stable'];
+  const labels = ['v2.0.0-stable', 'v2.0.0-beta', 'v1.5.2-stable', 'v1.5.1-stable', 'v0.8.4'];
   const bases = [
     Math.round(12 * scale),
     Math.round(4 * scale),
     Math.round(48 * scale),
     Math.round(18 * scale),
+    Math.round(14 * scale),
   ];
-  const steps = [3, 1, -4, -2];
+  const steps = [3, 1, -4, -2, -1];
   return {
     labels,
     series: labels.map((_, vi) =>

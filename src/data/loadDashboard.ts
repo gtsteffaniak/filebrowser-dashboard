@@ -9,6 +9,13 @@ export async function loadDashboard(): Promise<DashboardV1> {
     return res.json() as Promise<DashboardV1>;
   }
 
+  const envUrl = import.meta.env.VITE_DATA_URL;
+  if (envUrl) {
+    const res = await fetch(envUrl);
+    if (!res.ok) throw new Error(`Failed to load dashboard data from ${envUrl}`);
+    return res.json() as Promise<DashboardV1>;
+  }
+
   const configRes = await fetch(`${import.meta.env.BASE_URL}config.json`);
   if (!configRes.ok) throw new Error('Failed to load config.json');
   const { dataUrl } = (await configRes.json()) as { dataUrl: string };
