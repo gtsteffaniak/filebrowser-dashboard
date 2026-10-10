@@ -7,6 +7,7 @@ import type { WindowKey } from '../types/dashboard-v1';
 import { createInitialState, type AppState } from './state';
 import { initTheme, toggleTheme } from '../theme/theme';
 import { mostCommonVersion } from '../utils/versions';
+import { el } from '../utils/dom';
 
 export class App {
   private state: AppState;
@@ -63,7 +64,9 @@ export class App {
       this.mount();
       this.render();
     } catch (err) {
-      this.root.innerHTML = `<div class="error">${err instanceof Error ? err.message : 'Failed to load dashboard'}</div>`;
+      const message = err instanceof Error ? err.message : 'Failed to load dashboard';
+      this.root.textContent = '';
+      this.root.appendChild(el('div', 'error', message));
     }
   }
 
@@ -92,20 +95,12 @@ export class App {
       win.summary.most_common_version ??
       mostCommonVersion(win.panels.versions.labels, win.panels.versions.series);
 
-    this.summaryEl.innerHTML = `
-      <div class="stat-card">
-        <span class="stat-label">Unique installations</span>
-        <span class="stat-value">${win.summary.unique_installations.toLocaleString()}</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Total snapshots</span>
-        <span class="stat-value">${win.summary.total_snapshots.toLocaleString()}</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Most common version</span>
-        <span class="stat-value stat-version">${topVersion}</span>
-      </div>
-    `;
+    this.summaryEl.textContent = '';
+    this.summaryEl.append(
+      statCard('Unique installations', win.summary.unique_installations.toLocaleString()),
+      statCard('Total snapshots', win.summary.total_snapshots.toLocaleString()),
+      statCard('Most common version', topVersion ?? '', 'stat-version'),
+    );
 
     this.renderPanels();
   }
@@ -130,4 +125,13 @@ export class App {
       this.gridEl.appendChild(card.el);
     }
   }
+}
+
+function statCard(label: string, value: string, valueClass = ''): HTMLElement {
+  const card = el('div', 'stat-card');
+  card.append(
+    el('span', 'stat-label', label),
+    el('span', `stat-value${valueClass ? ` ${valueClass}` : ''}`, value),
+  );
+  return card;
 }
