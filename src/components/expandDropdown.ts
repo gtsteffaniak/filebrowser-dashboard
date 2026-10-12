@@ -177,12 +177,14 @@ function finishClose(dropdown: HTMLElement): void {
   trigger?.setAttribute('aria-expanded', 'false');
 }
 
-function closeDropdown(dropdown: HTMLElement): void {
+function closeDropdown(dropdown: HTMLElement, opts?: { immediate?: boolean }): void {
   const s = state(dropdown);
-  if (!dropdown.classList.contains('expand-dropdown--open') || s.closing) return;
+  if (!dropdown.classList.contains('expand-dropdown--open')) return;
+  if (s.closing && !opts?.immediate) return;
 
   const body = s.body;
-  if (!body) {
+  if (!body || opts?.immediate) {
+    s.closing = false;
     finishClose(dropdown);
     return;
   }
@@ -250,6 +252,10 @@ function openDropdown(dropdown: HTMLElement): void {
 }
 
 function toggleDropdown(dropdown: HTMLElement): void {
+  const s = state(dropdown);
+  if (s.closing) {
+    finishClose(dropdown);
+  }
   if (dropdown.classList.contains('expand-dropdown--open')) {
     closeDropdown(dropdown);
   } else {
@@ -270,7 +276,7 @@ function bindOptions(dropdown: HTMLElement, onSelect?: (value: string) => void):
       dropdown.querySelectorAll('.menu-option').forEach((opt) => {
         opt.classList.toggle('menu-option--selected', opt === option);
       });
-      closeDropdown(dropdown);
+      closeDropdown(dropdown, { immediate: true });
       onSelect?.(value);
     });
   });
@@ -329,7 +335,7 @@ function renderOptions(list: HTMLElement, options: DropdownOption[], selected: s
 
 /** Close an open expand dropdown and restore its panel to the DOM. */
 export function closeExpandDropdown(dropdown: HTMLElement): void {
-  closeDropdown(dropdown);
+  closeDropdown(dropdown, { immediate: true });
 }
 
 export class ExpandDropdown {

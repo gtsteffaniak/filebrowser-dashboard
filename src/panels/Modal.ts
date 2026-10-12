@@ -5,6 +5,7 @@ import { ChartHost } from '../charts/ChartHost';
 import type { AppState } from '../app/state';
 import type { DashboardV1, WindowData } from '../types/dashboard-v1';
 import { getPanel } from './registry';
+import { formatDateRange } from '../utils/windowRange';
 import {
   CHART_TYPE_LABELS,
   DEFAULT_MODAL_OPTS,
@@ -66,14 +67,16 @@ export class PanelModal {
 
     const headerText = this.el.querySelector('.modal-header-text')!;
     headerText.querySelector('.modal-title')!.textContent = def.title;
+    const rangeText = formatDateRange(win.start, win.end);
+    const descParts = [def.description, rangeText].filter(Boolean);
     const descEl = headerText.querySelector('.modal-desc');
-    if (def.description) {
+    if (descParts.length) {
       if (!descEl) {
         const p = document.createElement('p');
         p.className = 'modal-desc';
         headerText.appendChild(p);
       }
-      headerText.querySelector('.modal-desc')!.textContent = def.description;
+      headerText.querySelector('.modal-desc')!.textContent = descParts.join(' · ');
     } else {
       descEl?.remove();
     }
