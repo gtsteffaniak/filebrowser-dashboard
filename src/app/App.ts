@@ -3,11 +3,12 @@ import { Navbar } from '../layout/Navbar';
 import { PanelCard } from '../panels/PanelCard';
 import { PanelModal } from '../panels/Modal';
 import { PANELS, type PanelDef } from '../panels/registry';
-import { SECTION_ORDER, SECTION_TITLES } from '../panels/sections';
+import { SECTION_ORDER, SECTION_TITLES, type DashboardSection } from '../panels/sections';
 import type { WindowKey } from '../types/dashboard-v1';
 import { createInitialState, type AppState } from './state';
 import { initTheme, toggleTheme } from '../theme/theme';
 import { mostCommonVersion } from '../utils/versions';
+import { formatInteger } from '../utils/format';
 import { el } from '../utils/dom';
 
 export class App {
@@ -96,10 +97,13 @@ export class App {
       win.summary.most_common_version ??
       mostCommonVersion(win.panels.versions.labels, win.panels.versions.series);
 
+    const medianUsers = win.panels.counts.users_total?.p50;
+
     this.summaryEl.textContent = '';
     this.summaryEl.append(
       statCard('Installations', win.summary.unique_installations.toLocaleString()),
       statCard('Most used version', topVersion ?? '', 'stat-version'),
+      statCard('Median users', medianUsers != null ? formatInteger(medianUsers) : '—'),
     );
 
     this.renderPanels();
@@ -116,6 +120,16 @@ export class App {
     });
     card.render(data, win, this.state);
     this.cards.push(card);
+  }
+
+  private toggleSection(sectionEl: HTMLElement, toggleBtn: HTMLElement, section: DashboardSection): void {
+    const collapsed = sectionEl.classList.toggle('is-collapsed');
+    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+    if (collapsed) {
+      this.state.collapsedSections.add(section);
+    } else {
+      this.state.collapsedSections.delete(section);
+    }
   }
 
   private renderPanels(): void {
@@ -149,10 +163,26 @@ export class App {
 
       const sectionEl = document.createElement('section');
       sectionEl.className = 'dashboard-section';
+      const collapsed = this.state.collapsedSections.has(section);
+      if (collapsed) sectionEl.classList.add('is-collapsed');
+
       const header = document.createElement('div');
       header.className = 'dashboard-section-header';
-      header.innerHTML = `<h2 class="dashboard-section-title">${SECTION_TITLES[section]}</h2>`;
+      header.innerHTML = `
+        <button type="button" class="dashboard-section-toggle" aria-expanded="${!collapsed}" aria-label="Toggle ${SECTION_TITLES[section]} section">
+          <i class="material-icons dashboard-section-chevron" aria-hidden="true">expand_more</i>
+        </button>
+        <h2 class="dashboard-section-title">${SECTION_TITLES[section]}</h2>
+      `;
+      const toggleBtn = header.querySelector('.dashboard-section-toggle')!;
+      toggleBtn.addEventListener('click', () => this.toggleSection(sectionEl, toggleBtn as HTMLElement, section));
       sectionEl.appendChild(header);
+
+      const sectionBody = document.createElement('div');
+      sectionBody.className = 'dashboard-section-body';
+      const sectionBodyInner = document.createElement('div');
+      sectionBodyInner.className = 'dashboard-section-body-inner';
+      sectionBody.appendChild(sectionBodyInner);
 
       const grid = document.createElement('div');
       grid.className = 'panel-grid';
@@ -160,7 +190,8 @@ export class App {
         this.addCard(def);
         grid.appendChild(this.cards[this.cards.length - 1].el);
       }
-      sectionEl.appendChild(grid);
+      sectionBodyInner.appendChild(grid);
+      sectionEl.appendChild(sectionBody);
 
       this.bodyEl.appendChild(sectionEl);
     }

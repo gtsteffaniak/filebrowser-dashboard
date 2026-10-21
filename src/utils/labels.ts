@@ -13,6 +13,29 @@ export function formatOsBreakdown(data: ColumnarBreakdown): ColumnarBreakdown {
   };
 }
 
+const regionNames =
+  typeof Intl !== 'undefined' && 'DisplayNames' in Intl
+    ? new Intl.DisplayNames(['en'], { type: 'region' })
+    : null;
+
+/** Full country name for an ISO-3166 alpha-2 code; falls back to the raw label. */
+export function formatCountryLabel(value: string): string {
+  const code = value.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return value;
+  try {
+    return regionNames?.of(code) ?? value;
+  } catch {
+    return value;
+  }
+}
+
+export function formatCountryBreakdown(data: ColumnarBreakdown): ColumnarBreakdown {
+  return {
+    labels: data.labels.map(formatCountryLabel),
+    values: data.values,
+  };
+}
+
 const HOST_PLATFORM_LABELS: Record<string, string> = {
   unknown: 'Unknown',
   'generic-linux': 'Generic Linux',

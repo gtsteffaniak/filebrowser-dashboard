@@ -2,8 +2,8 @@ import type { ChartConfiguration, ChartOptions } from 'chart.js';
 
 /** Single-series accent per panel group (lines, one bar). */
 const GROUP_ACCENT: Record<string, string> = {
-  overview: '#2563eb',
-  deployments: '#2563eb',
+  overview: '#2196f3',
+  deployments: '#2196f3',
   versions: '#7c3aed',
   auth: '#ea580c',
   integrations: '#059669',
@@ -19,8 +19,8 @@ const GROUP_ACCENT: Record<string, string> = {
  * Chosen for separation on light and dark backgrounds; colorblind-friendly pairs avoided adjacency where possible.
  */
 const CATEGORICAL_PALETTE = [
-  '#2563eb', // blue
   '#dc2626', // red
+  '#2196f3', // icon blue
   '#16a34a', // green
   '#ca8a04', // amber
   '#9333ea', // purple
@@ -37,8 +37,8 @@ const CATEGORICAL_PALETTE = [
 
 /** Light → dark gradient pair per panel group (histograms, ordered buckets). */
 const GROUP_GRADIENT: Record<string, [string, string]> = {
-  overview: ['#93c5fd', '#2563eb'],
-  deployments: ['#93c5fd', '#2563eb'],
+  overview: ['#90caf9', '#2196f3'],
+  deployments: ['#90caf9', '#2196f3'],
   versions: ['#c4b5fd', '#7c3aed'],
   auth: ['#fdba74', '#ea580c'],
   integrations: ['#6ee7b7', '#059669'],
@@ -65,13 +65,16 @@ const GROUP_PALETTE_OFFSET: Record<string, number> = {
 
 /** Fixed colors for known categorical / series labels. */
 const LABEL_COLORS: Record<string, string> = {
-  windows: '#2563eb',
+  windows: '#2196f3',
   linux: '#eab308',
   darwin: '#ffffff',
   macos: '#ffffff',
   mac: '#ffffff',
-  stable: '#2563eb',
+  stable: '#2196f3',
   beta: '#ea580c',
+  arm64: '#dc2626',
+  kubernetes: '#dc2626',
+  native: '#ca8a04',
 };
 
 function cssVar(name: string, fallback: string): string {
@@ -109,11 +112,15 @@ export function chartColors(group: string, count: number): string[] {
   return chartGradientColors(group, count);
 }
 
-/** Per-label colors when known (e.g. OS); otherwise categorical palette. */
-export function chartColorsForLabels(group: string, labels: string[]): string[] {
+/** Per-label colors when known (e.g. OS); otherwise categorical palette. Optional per-index overrides. */
+export function chartColorsForLabels(
+  group: string,
+  labels: string[],
+  overrides?: (string | undefined)[],
+): string[] {
   const offset = GROUP_PALETTE_OFFSET[group] ?? 0;
   return labels.map((label, i) => {
-    const mapped = LABEL_COLORS[label.toLowerCase()];
+    const mapped = LABEL_COLORS[label.toLowerCase()] ?? overrides?.[i];
     if (mapped) return mapped;
     return CATEGORICAL_PALETTE[(offset + i) % CATEGORICAL_PALETTE.length];
   });

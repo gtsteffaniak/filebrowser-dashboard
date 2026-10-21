@@ -24,7 +24,7 @@ export class Navbar {
     this.el.innerHTML = `
       <div class="navbar-inner">
         <div class="navbar-brand">
-          <span class="brand-mark">FB</span>
+          <img class="brand-mark" src="/logo.svg" alt="FileBrowser logo" width="40" height="40" />
           <div>
             <h1>FileBrowser Analytics</h1>
             <p class="brand-sub">How FileBrowser is used</p>
@@ -70,7 +70,7 @@ export class Navbar {
 
     const data = state.data;
     if (data) {
-      this.metaEl.textContent = `Updated weekly · Through ${data.data_through}`;
+      this.metaEl.textContent = `Updated daily · Through ${data.data_through}`;
     } else {
       this.metaEl.textContent = '';
     }

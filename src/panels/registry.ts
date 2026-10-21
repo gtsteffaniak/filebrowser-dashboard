@@ -14,7 +14,6 @@ import {
   pctBar,
   rangeBar,
   stackedComposition,
-  withValueFormat,
   type ValueFormatter,
 } from '../charts/builders';
 import type { FlagBreakdown } from '../types/dashboard-v1';
@@ -29,9 +28,10 @@ import {
   isHorizontalBar,
 } from './modalTypes';
 import type { DashboardSection } from './sections';
-import { formatHostPlatformBreakdown, formatOsBreakdown } from '../utils/labels';
+import { formatCountryBreakdown, formatHostPlatformBreakdown, formatOsBreakdown } from '../utils/labels';
+import { flagSpec } from '../utils/flags';
 import { formatBytes } from '../utils/format';
-import { filterVersionSeries, resolveVersionTrainsTs } from '../utils/versions';
+import { filterVersionSeries, omitEmptyTimeBuckets, resolveVersionTrainsTs } from '../utils/versions';
 
 function modalChartType(modal?: ModalBuildOptions, types?: ModalChartType[]): ModalChartType | undefined {
   return modal?.chartType ?? types?.[0];
@@ -105,6 +105,12 @@ function rangeLabels(data: DashboardV1, key: string): string[] {
 function rangeVals(win: WindowData, key: string): number[] {
   return win.panels.ranges[key] ?? [];
 }
+
+const SOURCE_FEATURES = [
+  { label: 'Writable', key: 'sources_writable' },
+  { label: 'Share enabled', key: 'sources_public' },
+  { label: 'Indexed', key: 'sources_indexed' },
+] as const;
 
 type GroupedRangeSeries = { label: string; rangeKey: string };
 
@@ -192,42 +198,6 @@ function rangePanel(
   };
 }
 
-function columnarPanel(
-  id: string,
-  title: string,
-  description: string,
-  group: PanelGroup,
-  getData: (win: WindowData) => { labels: string[]; values: number[] },
-  section: DashboardSection,
-  opts: {
-    defaultHorizontal?: boolean;
-    chartTypes?: ModalControlsConfig['chartTypes'];
-    zoom?: boolean;
-  } = {},
-): PanelDef {
-  const defaultHorizontal = opts.defaultHorizontal ?? true;
-  return {
-    id,
-    title,
-    description,
-    group,
-    section,
-    modal: {
-      chartTypes: opts.chartTypes ?? COLUMNAR_MODAL_TYPES,
-      zoom: opts.zoom ?? true,
-    },
-    build: (_d, win, _s, c, modal) => {
-      const data = getData(win);
-      const types = opts.chartTypes ?? COLUMNAR_MODAL_TYPES;
-      const chartType = modalChartType(modal, types) ?? 'bar-h';
-      if (chartType === 'doughnut' || chartType === 'pie') {
-        return circularBreakdown(data.labels, data.values, group, c, chartType);
-      }
-      return barH(data.labels, data.values, group, c, isHorizontalBar(modal, defaultHorizontal));
-    },
-  };
-}
-
 function timeseriesPanel(
   id: string,
   title: string,
@@ -236,7 +206,7 @@ function timeseriesPanel(
   valueKey: keyof WindowData['panels']['timeseries'],
   datasetLabel: string,
   section: DashboardSection,
-  extra?: { formatter?: ValueFormatter; integerTicks?: boolean },
+  extra?: { formatter?: ValueFormatter; integerTicks?: boolean; skipZeros?: boolean },
 ): PanelDef {
   return {
     id,
@@ -249,7 +219,17 @@ function timeseriesPanel(
       const labels = bucketLabels(win);
       const values = (win.panels.timeseries[valueKey] as number[] | undefined) ?? [];
       if (!modal) {
-        return lineSingle(labels, values, datasetLabel, group, c, true, extra?.formatter, extra?.integerTicks);
+        return lineSingle(
+          labels,
+          values,
+          datasetLabel,
+          group,
+          c,
+          true,
+          extra?.formatter,
+          extra?.integerTicks,
+          extra?.skipZeros,
+        );
       }
       const chartType = modalChartType(modal, TIMESERIES_MODAL_TYPES) ?? 'line';
       if (chartType === 'line' || chartType === 'area' || chartType === 'bar' || chartType === 'bar-h') {
@@ -262,60 +242,20 @@ function timeseriesPanel(
           chartType,
           extra?.formatter,
           extra?.integerTicks,
+          extra?.skipZeros,
         );
       }
-      return lineSingle(labels, values, datasetLabel, group, c, true, extra?.formatter, extra?.integerTicks);
-    },
-  };
-}
-
-function multiTimeseriesPanel(
-  id: string,
-  title: string,
-  description: string,
-  group: PanelGroup,
-  seriesKeys: Array<{ key: keyof WindowData['panels']['timeseries']; label: string }>,
-  section: DashboardSection,
-  extra?: { formatter?: ValueFormatter; integerTicks?: boolean },
-): PanelDef {
-  return {
-    id,
-    title,
-    description,
-    group,
-    section,
-    modal: { chartTypes: TIMESERIES_MODAL_TYPES, zoom: true },
-    build: (_d, win, _s, c, modal) => {
-      const labels = bucketLabels(win);
-      const ts = win.panels.timeseries;
-      const seriesLabels = seriesKeys.map((s) => s.label);
-      const seriesData = seriesKeys.map((s) => (ts[s.key] as number[] | undefined) ?? []);
-      const chartType = modalChartType(modal, TIMESERIES_MODAL_TYPES) ?? 'line';
-      const fill = chartType === 'area';
-      if (chartType === 'bar' || chartType === 'bar-h') {
-        const cfg = groupedBarMulti(labels, seriesLabels, seriesData, group, c, chartType === 'bar-h');
-        return {
-          ...cfg,
-          options: withValueFormat(cfg.options ?? {}, extra?.formatter, extra?.integerTicks),
-        };
-      }
-      const cfg = lineMulti(labels, seriesLabels, seriesData, group, c, undefined, undefined, fill);
-      const options = withValueFormat(
-        {
-          ...cfg.options,
-          plugins: {
-            ...cfg.options?.plugins,
-            legend: {
-              ...cfg.options?.plugins?.legend,
-              display: true,
-              position: 'bottom',
-            },
-          },
-        },
+      return lineSingle(
+        labels,
+        values,
+        datasetLabel,
+        group,
+        c,
+        true,
         extra?.formatter,
         extra?.integerTicks,
+        extra?.skipZeros,
       );
-      return { ...cfg, options };
     },
   };
 }
@@ -327,7 +267,7 @@ function compositionTimeseriesPanel(
   group: PanelGroup,
   seriesKeys: Array<{ key: keyof WindowData['panels']['timeseries']; label: string }>,
   section: DashboardSection,
-  opts: { alreadyPercent?: boolean } = {},
+  opts: { alreadyPercent?: boolean; skipEmptyBuckets?: boolean } = {},
 ): PanelDef {
   const alreadyPercent = opts.alreadyPercent ?? true;
   return {
@@ -342,7 +282,10 @@ function compositionTimeseriesPanel(
       const ts = win.panels.timeseries;
       const seriesLabels = seriesKeys.map((s) => s.label);
       const raw = seriesKeys.map((s) => (ts[s.key] as number[] | undefined) ?? []);
-      return buildCompositionChart(labels, seriesLabels, raw, group, c, modal, alreadyPercent);
+      const buckets = opts.skipEmptyBuckets
+        ? omitEmptyTimeBuckets(labels, raw)
+        : { bucketLabels: labels, series: raw };
+      return buildCompositionChart(buckets.bucketLabels, seriesLabels, buckets.series, group, c, modal, alreadyPercent);
     },
   };
 }
@@ -366,15 +309,32 @@ export const PANELS: PanelDef[] = [
       return lineSingle(labels, values, 'Installations', 'overview', c, true, undefined, true);
     },
   },
-  columnarPanel(
-    'countries',
-    'Country',
-    'Where installations connect from.',
-    'deployments',
-    (w) => w.panels.countries,
-    'how-it-runs',
-    { defaultHorizontal: true, zoom: true },
-  ),
+  {
+    id: 'countries',
+    title: 'Country',
+    group: 'deployments',
+    section: 'how-it-runs',
+    description: 'Where installations connect from.',
+    modal: { chartTypes: COLUMNAR_MODAL_TYPES, zoom: true },
+    build: (_d, win, _s, c, modal) => {
+      const raw = win.panels.countries;
+      const data = c ? raw : formatCountryBreakdown(raw);
+      const flags = raw.labels.map((code) => flagSpec(code));
+      const chartType = modalChartType(modal, COLUMNAR_MODAL_TYPES) ?? 'bar-h';
+      if (chartType === 'doughnut' || chartType === 'pie') {
+        return circularBreakdown(
+          data.labels,
+          data.values,
+          'deployments',
+          c,
+          chartType,
+          false,
+          flags.map((f) => f?.a),
+        );
+      }
+      return barH(data.labels, data.values, 'deployments', c, isHorizontalBar(modal, true), false, flags);
+    },
+  },
   {
     id: 'os',
     title: 'Operating system',
@@ -430,7 +390,7 @@ export const PANELS: PanelDef[] = [
   rangePanel('cpu-cores', 'CPU cores', 'Cores on the machine running FileBrowser.', 'system', 'cpu_cores', 'how-it-runs'),
   rangePanel(
     'memory-rss',
-    'FileBrowser memory',
+    'Application memory',
     'Memory used by the FileBrowser process.',
     'system',
     'memory_rss_mb',
@@ -439,7 +399,7 @@ export const PANELS: PanelDef[] = [
   rangePanel('memory-total', 'Host memory', 'Total RAM on the machine.', 'system', 'memory_total_mb', 'how-it-runs'),
   {
     id: 'version-trains',
-    title: 'Version lines over time',
+    title: 'Major versions over time',
     group: 'versions',
     section: 'versions',
     description: 'Share of installations on each minor line (e.g. v2.0.x stable, v2.1.x beta).',
@@ -457,15 +417,23 @@ export const PANELS: PanelDef[] = [
         });
         series = filtered.series;
       }
+      const buckets = omitEmptyTimeBuckets(bucketLabels(win), series);
       if (!modal) {
-        return stackedComposition(bucketLabels(win), labels, normalizeSeriesToPercent(series), 'versions', c, 'area');
+        return stackedComposition(
+          buckets.bucketLabels,
+          labels,
+          normalizeSeriesToPercent(buckets.series),
+          'versions',
+          c,
+          'area',
+        );
       }
-      return buildCompositionChart(bucketLabels(win), labels, series, 'versions', c, modal, false);
+      return buildCompositionChart(buckets.bucketLabels, labels, buckets.series, 'versions', c, modal, false);
     },
   },
   {
     id: 'versions',
-    title: 'Versions over time',
+    title: 'Minor versions over time',
     group: 'versions',
     section: 'versions',
     description: 'Share of installations on each exact release.',
@@ -476,11 +444,12 @@ export const PANELS: PanelDef[] = [
         win.panels.versions.series,
         state.versionFilter,
       );
+      const buckets = omitEmptyTimeBuckets(bucketLabels(win), series);
       if (!modal) {
-        const pct = normalizeSeriesToPercent(series);
-        return stackedComposition(bucketLabels(win), labels, pct, 'versions', c, 'area');
+        const pct = normalizeSeriesToPercent(buckets.series);
+        return stackedComposition(buckets.bucketLabels, labels, pct, 'versions', c, 'area');
       }
-      return buildCompositionChart(bucketLabels(win), labels, series, 'versions', c, modal, false);
+      return buildCompositionChart(buckets.bucketLabels, labels, buckets.series, 'versions', c, modal, false);
     },
   },
   compositionTimeseriesPanel(
@@ -493,7 +462,7 @@ export const PANELS: PanelDef[] = [
       { key: 'beta_share_pct', label: 'Beta' },
     ],
     'versions',
-    { alreadyPercent: true },
+    { alreadyPercent: true, skipEmptyBuckets: true },
   ),
   {
     id: 'features',
@@ -540,13 +509,13 @@ export const PANELS: PanelDef[] = [
   ),
   timeseriesPanel(
     'avg-users',
-    'Typical users over time',
+    'Users over time',
     'Typical (median) user accounts per installation.',
     'counts',
     'avg_users',
     'Users',
     'users-sharing',
-    { integerTicks: true },
+    { integerTicks: true, skipZeros: true },
   ),
   rangePanel(
     'shares-active',
@@ -558,7 +527,7 @@ export const PANELS: PanelDef[] = [
   ),
   timeseriesPanel(
     'avg-shares',
-    'Typical shares over time',
+    'Shares over time',
     'Typical (median) active shares per installation.',
     'counts',
     'avg_shares',
@@ -576,7 +545,7 @@ export const PANELS: PanelDef[] = [
   ),
   timeseriesPanel(
     'avg-access-rules',
-    'Typical access rules over time',
+    'Access rules over time',
     'Typical (median) access rules per installation.',
     'counts',
     'avg_access_rules',
@@ -592,49 +561,53 @@ export const PANELS: PanelDef[] = [
     'sources_enabled',
     'sources',
   ),
-  groupedRangePanel(
-    'sources-features-enabled',
-    'Source features enabled',
-    'Writable, share-enabled, and indexed source counts per installation. Each range bucket shows three bars side by side.',
-    'counts',
-    'sources_writable',
-    [
-      { label: 'Writable', rangeKey: 'sources_writable' },
-      { label: 'Share enabled', rangeKey: 'sources_public' },
-      { label: 'Indexed', rangeKey: 'sources_indexed' },
-    ],
-    'sources',
-    {
-      optionalRangeKeys: ['sources_writable', 'sources_public'],
+  {
+    id: 'source-features',
+    title: 'Source features',
+    group: 'counts',
+    section: 'sources',
+    description: 'Installations with at least one writable, share-enabled, or indexed source.',
+    isAvailable: (win) => SOURCE_FEATURES.some((p) => Array.isArray(win.panels.ranges[p.key])),
+    modal: { chartTypes: FLAG_MODAL_TYPES, zoom: true },
+    build: (d, win, _s, c, modal) => {
+      const data: FlagBreakdown = { labels: [], values: [], enabled_pct: [] };
+      for (const p of SOURCE_FEATURES) {
+        const hist = win.panels.ranges[p.key];
+        if (!Array.isArray(hist)) continue;
+        const total = hist.reduce((a, b) => a + b, 0);
+        if (total <= 0) continue;
+        const buckets = d.range_definitions[p.key]?.buckets ?? [];
+        const zeroIdx = Math.max(
+          0,
+          buckets.findIndex((b) => (b.min ?? 0) === 0 && (b.max ?? 0) === 0),
+        );
+        const enabled = total - (hist[zeroIdx] ?? 0);
+        data.labels.push(p.label);
+        data.values.push(enabled);
+        data.enabled_pct.push(enabled / total);
+      }
+      return buildFlagChart(data, 'counts', c, modal);
     },
-  ),
-  groupedRangePanel(
-    'sources-features-disabled',
-    'Source features disabled',
-    'Read-only, private, and non-indexed source counts per installation. Each range bucket shows three bars side by side.',
-    'counts',
-    'sources_read_only',
-    [
-      { label: 'Read-only', rangeKey: 'sources_read_only' },
-      { label: 'Private', rangeKey: 'sources_private' },
-      { label: 'Indexing disabled', rangeKey: 'sources_without_index' },
-    ],
-    'sources',
-    {
-      optionalRangeKeys: ['sources_without_index'],
-    },
-  ),
-  multiTimeseriesPanel(
-    'library-size-over-time',
-    'Typical library size over time',
-    'Typical (median) indexed files and folders per installation.',
+  },
+  timeseriesPanel(
+    'files-over-time',
+    'Typical indexed files over time',
+    'Typical (median) indexed files per installation.',
     'indexing',
-    [
-      { key: 'avg_total_files', label: 'Files' },
-      { key: 'avg_total_dirs', label: 'Folders' },
-    ],
+    'avg_total_files',
+    'Files',
     'sources',
-    { integerTicks: true },
+    { integerTicks: true, skipZeros: true },
+  ),
+  timeseriesPanel(
+    'folders-over-time',
+    'Typical indexed folders over time',
+    'Typical (median) indexed folders per installation.',
+    'indexing',
+    'avg_total_dirs',
+    'Folders',
+    'sources',
+    { integerTicks: true, skipZeros: true },
   ),
   groupedRangePanel(
     'library-size',
@@ -648,16 +621,25 @@ export const PANELS: PanelDef[] = [
     ],
     'sources',
   ),
-  multiTimeseriesPanel(
-    'scan-time-over-time',
-    'Scan time over time',
-    'Typical quick (incremental) and full library rescan duration.',
+  timeseriesPanel(
+    'quick-scan-time-over-time',
+    'Quick scan time over time',
+    'Typical (median) quick (incremental) library rescan duration.',
     'indexing',
-    [
-      { key: 'avg_quick_scan_seconds', label: 'Quick scan' },
-      { key: 'avg_full_scan_seconds', label: 'Full scan' },
-    ],
+    'avg_quick_scan_seconds',
+    'Quick scan (s)',
     'sources',
+    { skipZeros: true },
+  ),
+  timeseriesPanel(
+    'full-scan-time-over-time',
+    'Full scan time over time',
+    'Typical (median) full library rescan duration.',
+    'indexing',
+    'avg_full_scan_seconds',
+    'Full scan (s)',
+    'sources',
+    { skipZeros: true },
   ),
   rangePanel(
     'scan-cost-per-10k',
@@ -679,17 +661,25 @@ export const PANELS: PanelDef[] = [
     ],
     'sources',
   ),
-  multiTimeseriesPanel(
-    'database-size-over-time',
-    'Database size over time',
-    'Typical main database and search index size over the selected range.',
+  timeseriesPanel(
+    'main-db-size-over-time',
+    'Main database size over time',
+    'Typical (median) main database size over the selected range.',
     'storage',
-    [
-      { key: 'avg_main_db_bytes', label: 'Main database' },
-      { key: 'avg_index_db_bytes', label: 'Search index' },
-    ],
+    'avg_main_db_bytes',
+    'Main database',
     'sources',
-    { formatter: formatBytes },
+    { formatter: formatBytes, skipZeros: true },
+  ),
+  timeseriesPanel(
+    'search-index-size-over-time',
+    'Search index size over time',
+    'Typical (median) search index size over the selected range.',
+    'storage',
+    'avg_index_db_bytes',
+    'Search index',
+    'sources',
+    { formatter: formatBytes, skipZeros: true },
   ),
 ];
 

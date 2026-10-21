@@ -1,3 +1,4 @@
+import type { DashboardSection } from '../panels/sections';
 import type { DashboardV1, WindowKey } from '../types/dashboard-v1';
 import type { Theme } from '../theme/theme';
 
@@ -7,6 +8,7 @@ export interface AppState {
   theme: Theme;
   versionFilter: string;
   expandedPanelId: string | null;
+  collapsedSections: Set<DashboardSection>;
   loading: boolean;
   error: string | null;
 }
@@ -18,6 +20,7 @@ export function createInitialState(theme: Theme): AppState {
     theme,
     versionFilter: 'all',
     expandedPanelId: null,
+    collapsedSections: new Set(),
     loading: true,
     error: null,
   };

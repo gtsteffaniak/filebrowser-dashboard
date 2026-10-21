@@ -1,5 +1,6 @@
 import type { ChartConfiguration, ChartOptions } from 'chart.js';
 import type { ColumnarBreakdown, FlagBreakdown, WindowData } from '../types/dashboard-v1';
+import type { FlagSpec } from '../utils/flags';
 import { matchesVersionTrain } from '../utils/versions';
 import {
   baseOptions,
@@ -68,23 +69,63 @@ export function withValueFormat(
 
 export function barH(
   labels: string[],
-  values: number[],
+  values: (number | null)[],
   group: string,
   compact: boolean,
   horizontal = true,
   gradient = false,
+  flags?: (FlagSpec | undefined)[],
 ): ChartConfiguration {
   const colors = gradient ? chartGradientColors(group, labels.length) : chartColorsForLabels(group, labels);
-  const borders = gradient ? labels.map(() => 'transparent') : segmentBorderColors(colors);
+  const baseBorders = gradient ? labels.map(() => 'transparent') : segmentBorderColors(colors);
+  const borders = flags
+    ? baseBorders.map((b, i) => (flags[i] ? (flags[i]!.border ?? flags[i]!.b) : b))
+    : baseBorders;
+  const backgroundColor = flags
+    ? (context: {
+        dataIndex: number;
+        parsed?: { x?: number | null; y?: number | null };
+        chart: {
+          ctx: CanvasRenderingContext2D;
+          scales?: {
+            x?: { getPixelForValue: (v: number) => number };
+            y?: { getPixelForValue: (v: number) => number };
+          };
+        };
+      }) => {
+        const flag = flags[context.dataIndex];
+        if (!flag) return colors[context.dataIndex] ?? 'transparent';
+        if (!flag.border || flag.a === flag.b) return flag.a;
+        const { ctx, scales } = context.chart;
+        const parsed = context.parsed;
+        const xScale = scales?.x;
+        const yScale = scales?.y;
+        if (!ctx || !xScale || !yScale || !parsed) return flag.a;
+        const midX = horizontal
+          ? (xScale.getPixelForValue(0) + xScale.getPixelForValue(parsed.x ?? 0)) / 2
+          : xScale.getPixelForValue(context.dataIndex);
+        const midY = horizontal
+          ? yScale.getPixelForValue(context.dataIndex)
+          : (yScale.getPixelForValue(0) + yScale.getPixelForValue(parsed.y ?? 0)) / 2;
+        if (!Number.isFinite(midX) || !Number.isFinite(midY)) return flag.a;
+        const span = 12;
+        const g = ctx.createLinearGradient(midX - span, midY - span, midX + span, midY + span);
+        g.addColorStop(0, flag.a);
+        g.addColorStop(0.49, flag.a);
+        g.addColorStop(0.51, flag.b);
+        g.addColorStop(1, flag.b);
+        return g;
+      }
+    : colors;
   return col({
     type: 'bar',
     data: {
       labels,
       datasets: [{
         data: values,
-        backgroundColor: colors,
+        backgroundColor,
         borderColor: borders,
-        borderWidth: 2,
+        borderWidth: compact ? 1 : 2,
         borderRadius: 6,
       }],
     },
@@ -103,8 +144,11 @@ export function circularBreakdown(
   compact: boolean,
   variant: 'doughnut' | 'pie',
   gradient = false,
+  colorOverrides?: (string | undefined)[],
 ): ChartConfiguration {
-  const colors = gradient ? chartGradientColors(group, labels.length) : chartColorsForLabels(group, labels);
+  const colors = gradient
+    ? chartGradientColors(group, labels.length)
+    : chartColorsForLabels(group, labels, colorOverrides);
   const borders = segmentBorderColors(colors);
   const baseOpts = doughnutOptions(compact) ?? {};
   return col({
@@ -121,7 +165,7 @@ export function circularBreakdown(
     options: {
       ...baseOpts,
       cutout: variant === 'pie' ? '0%' : (baseOpts.cutout ?? '58%'),
-    } as ChartConfiguration<'doughnut'>['options'],
+    } as ChartConfiguration['options'],
   });
 }
 
@@ -332,6 +376,7 @@ export function lineSingle(
   fill = true,
   formatter?: ValueFormatter,
   integerTicks?: boolean,
+  skipZeros = false,
 ): ChartConfiguration {
   const color = chartColors(group, 1)[0];
   const options = withValueFormat(
@@ -348,11 +393,12 @@ export function lineSingle(
       labels: bucketLabels,
       datasets: [{
         label,
-        data: values,
+        data: skipZeros ? values.map((v) => (v === 0 ? null : v)) : values,
         borderColor: color,
         backgroundColor: color + (fill ? '44' : '00'),
         fill,
         tension: 0.35,
+        spanGaps: skipZeros,
         pointRadius: compact ? 2 : 4,
       }],
     },
@@ -369,16 +415,28 @@ export function buildTimeseriesChart(
   chartType: 'line' | 'area' | 'bar' | 'bar-h' = 'line',
   formatter?: ValueFormatter,
   integerTicks?: boolean,
+  skipZeros = false,
 ): ChartConfiguration {
+  const data = skipZeros ? values.map((v) => (v === 0 ? null : v)) : values;
   if (chartType === 'bar') {
-    const cfg = barH(bucketLabels, values, group, compact, false, true);
+    const cfg = barH(bucketLabels, data, group, compact, false, true);
     return { ...cfg, options: withValueFormat(cfg.options ?? {}, formatter, integerTicks) };
   }
   if (chartType === 'bar-h') {
-    const cfg = barH(bucketLabels, values, group, compact, true, true);
+    const cfg = barH(bucketLabels, data, group, compact, true, true);
     return { ...cfg, options: withValueFormat(cfg.options ?? {}, formatter, integerTicks) };
   }
-  return lineSingle(bucketLabels, values, label, group, compact, chartType === 'area', formatter, integerTicks);
+  return lineSingle(
+    bucketLabels,
+    values,
+    label,
+    group,
+    compact,
+    chartType === 'area',
+    formatter,
+    integerTicks,
+    skipZeros,
+  );
 }
 
 export function rangeBar(

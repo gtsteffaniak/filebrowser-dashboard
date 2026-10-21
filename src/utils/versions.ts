@@ -95,6 +95,27 @@ export function filterVersionSeries(
   };
 }
 
+/** Drop time buckets where every series is empty or zero (missing data). */
+export function omitEmptyTimeBuckets(
+  bucketLabels: string[],
+  series: number[][],
+): { bucketLabels: string[]; series: number[][] } {
+  const keep: number[] = [];
+  for (let i = 0; i < bucketLabels.length; i++) {
+    let total = 0;
+    for (const row of series) {
+      const v = row?.[i];
+      if (typeof v === 'number' && Number.isFinite(v)) total += v;
+    }
+    if (total > 0) keep.push(i);
+  }
+  if (keep.length === bucketLabels.length) return { bucketLabels, series };
+  return {
+    bucketLabels: keep.map((i) => bucketLabels[i]),
+    series: series.map((row) => keep.map((i) => row?.[i] ?? 0)),
+  };
+}
+
 export function mostCommonVersion(labels: string[], series: number[][]): string {
   if (!labels.length) return '—';
   const totals = labels.map((_, i) => series[i]?.reduce((a, b) => a + b, 0) ?? 0);

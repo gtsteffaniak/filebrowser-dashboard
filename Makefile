@@ -28,7 +28,7 @@ install: $(NODE_MODULES) ## npm install
 $(NODE_MODULES): package.json
 	npm install
 
-dev: install ## Dev server (loads the public API data)
+dev: #install ## Dev server (loads the public API data)
 	npm run dev
 
 build: install check ## Production build to dist/
