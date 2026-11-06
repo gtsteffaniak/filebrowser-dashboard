@@ -9,7 +9,7 @@ export const SECTION_ORDER = [
 export type DashboardSection = (typeof SECTION_ORDER)[number];
 
 export const SECTION_TITLES: Record<DashboardSection, string> = {
-  'how-it-runs': 'How FileBrowser runs',
+  'how-it-runs': 'How FileBrowser Quantum runs',
   versions: 'Versions',
   features: 'Features',
   'users-sharing': 'Users, Access, and Sharing',

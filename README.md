@@ -1,4 +1,4 @@
-# FileBrowser Analytics Dashboard
+# FileBrowser Quantum Analytics Dashboard
 
 Public analytics dashboard for FileBrowser Quantum deployments. Served at [dashboard.filebrowserquantum.com](https://dashboard.filebrowserquantum.com).
 

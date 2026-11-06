@@ -26,8 +26,7 @@ export class Navbar {
         <div class="navbar-brand">
           <img class="brand-mark" src="/logo.svg" alt="FileBrowser logo" width="40" height="40" />
           <div>
-            <h1>FileBrowser Analytics</h1>
-            <p class="brand-sub">How FileBrowser is used</p>
+            <h1>FileBrowser Quantum Analytics</h1>
           </div>
         </div>
         <p class="navbar-meta"></p>

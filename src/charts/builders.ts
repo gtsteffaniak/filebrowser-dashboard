@@ -406,6 +406,64 @@ export function lineSingle(
   });
 }
 
+/**
+ * Two series on one line chart: the mean as a solid primary line and the
+ * median as a dashed secondary line, with a legend identifying both.
+ */
+export function lineDual(
+  bucketLabels: string[],
+  primary: { label: string; values: number[] },
+  secondary: { label: string; values: number[] },
+  group: string,
+  compact: boolean,
+  fill = true,
+  formatter?: ValueFormatter,
+  integerTicks?: boolean,
+  skipZeros = false,
+): ChartConfiguration {
+  const [primaryColor, secondaryColor] = chartColors(group, 2);
+  const mapData = (vals: number[]) => (skipZeros ? vals.map((v) => (v === 0 ? null : v)) : vals);
+  const options = withValueFormat(
+    {
+      ...baseOptions(compact),
+      plugins: { ...baseOptions(compact).plugins, legend: { display: true } },
+    },
+    formatter,
+    integerTicks,
+  );
+  return col({
+    type: 'line',
+    data: {
+      labels: bucketLabels,
+      datasets: [
+        {
+          label: primary.label,
+          data: mapData(primary.values),
+          borderColor: primaryColor,
+          backgroundColor: primaryColor + (fill ? '44' : '00'),
+          fill,
+          tension: 0.35,
+          spanGaps: skipZeros,
+          pointRadius: compact ? 2 : 4,
+        },
+        {
+          label: secondary.label,
+          data: mapData(secondary.values),
+          borderColor: secondaryColor,
+          backgroundColor: 'transparent',
+          borderDash: [6, 4],
+          borderWidth: 2,
+          fill: false,
+          tension: 0.35,
+          spanGaps: skipZeros,
+          pointRadius: compact ? 0 : 3,
+        },
+      ],
+    },
+    options,
+  });
+}
+
 export function buildTimeseriesChart(
   bucketLabels: string[],
   values: number[],
