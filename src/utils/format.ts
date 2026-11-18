@@ -1,3 +1,5 @@
+import { getLocaleTag } from '../i18n';
+
 export function formatBytes(n: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const sign = n < 0 ? '-' : '';
@@ -12,5 +14,5 @@ export function formatBytes(n: number): string {
 }
 
 export function formatInteger(n: number): string {
-  return Math.round(n).toLocaleString();
+  return Math.round(n).toLocaleString(getLocaleTag());
 }

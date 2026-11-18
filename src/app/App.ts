@@ -10,6 +10,7 @@ import { initTheme, toggleTheme } from '../theme/theme';
 import { filterVersionSeries, mostCommonVersion } from '../utils/versions';
 import { formatInteger } from '../utils/format';
 import { el } from '../utils/dom';
+import { getLocaleTag, t } from '../i18n';
 
 export class App {
   private state: AppState;
@@ -23,7 +24,7 @@ export class App {
   constructor(root: HTMLElement, theme = initTheme()) {
     this.state = createInitialState(theme);
     this.root = root;
-    this.root.innerHTML = '<div class="loading">Loading analytics…</div>';
+    this.root.innerHTML = `<div class="loading">${t('Loading analytics…')}</div>`;
 
     this.navbar = new Navbar({
       onWindowChange: (w) => this.setWindow(w),
@@ -36,12 +37,7 @@ export class App {
         this.state.theme = toggleTheme(this.state.theme);
         this.navbar.update(this.state);
         this.renderPanels();
-        if (this.state.expandedPanelId) {
-          const win = this.state.data?.windows[this.state.window];
-          if (win && this.state.data) {
-            this.modal.open(this.state.expandedPanelId, this.state.data, win, this.state);
-          }
-        }
+        this.reopenModal();
       },
     });
 
@@ -67,7 +63,7 @@ export class App {
       this.mount();
       this.render();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load dashboard';
+      const message = err instanceof Error ? err.message : t('Failed to load dashboard');
       this.root.textContent = '';
       this.root.appendChild(el('div', 'error', message));
     }
@@ -85,6 +81,13 @@ export class App {
   private setWindow(w: WindowKey): void {
     this.state.window = w;
     this.render();
+  }
+
+  /** Re-open the expanded panel (if any) so its title, labels and chart pick up the current state. */
+  private reopenModal(): void {
+    if (!this.state.expandedPanelId || !this.state.data) return;
+    const win = this.state.data.windows[this.state.window];
+    this.modal.open(this.state.expandedPanelId, this.state.data, win, this.state);
   }
 
   private render(): void {
@@ -107,7 +110,7 @@ export class App {
     let installations = win.summary.unique_installations;
     let topVersion: string | undefined = win.summary.most_common_version;
     if (filtered) {
-      const train = win.summary.version_trains.find((t) => t.key === filter);
+      const train = win.summary.version_trains.find((vt) => vt.key === filter);
       if (train) installations = train.count;
       const v = filterVersionSeries(win.panels.versions.labels, win.panels.versions.series, filter);
       topVersion = mostCommonVersion(v.labels, v.series);
@@ -123,10 +126,10 @@ export class App {
 
     this.summaryEl.textContent = '';
     this.summaryEl.append(
-      statCard('Installations', installations.toLocaleString()),
-      statCard('Most used version', topVersion ?? '', 'stat-version'),
-      statCard('Average users', avgUsers != null ? formatInteger(Math.round(avgUsers)) : '—'),
-      statCard('Using beta', betaPct != null ? `${betaPct.toFixed(1)}%` : '—'),
+      statCard(t('Installations'), installations.toLocaleString(getLocaleTag())),
+      statCard(t('Most used version'), topVersion ?? '', 'stat-version'),
+      statCard(t('Average users'), avgUsers != null ? formatInteger(Math.round(avgUsers)) : '—'),
+      statCard(t('Using beta'), betaPct != null ? `${betaPct.toFixed(1)}%` : '—'),
     );
   }
 
@@ -190,10 +193,10 @@ export class App {
       const header = document.createElement('div');
       header.className = 'dashboard-section-header';
       header.innerHTML = `
-        <button type="button" class="dashboard-section-toggle" aria-expanded="${!collapsed}" aria-label="Toggle ${SECTION_TITLES[section]} section">
+        <button type="button" class="dashboard-section-toggle" aria-expanded="${!collapsed}" aria-label="${t('Toggle {section} section', { section: t(SECTION_TITLES[section]) })}">
           <i class="material-icons dashboard-section-chevron" aria-hidden="true">expand_more</i>
         </button>
-        <h2 class="dashboard-section-title">${SECTION_TITLES[section]}</h2>
+        <h2 class="dashboard-section-title">${t(SECTION_TITLES[section])}</h2>
       `;
       const toggleBtn = header.querySelector('.dashboard-section-toggle')!;
       toggleBtn.addEventListener('click', () => this.toggleSection(sectionEl, toggleBtn as HTMLElement, section));

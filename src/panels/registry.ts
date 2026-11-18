@@ -33,6 +33,7 @@ import { formatCountryBreakdown, formatHostPlatformBreakdown, formatOsBreakdown 
 import { flagSpec } from '../utils/flags';
 import { formatBytes } from '../utils/format';
 import { filterVersionSeries, omitEmptyTimeBuckets, resolveVersionTrainsTs } from '../utils/versions';
+import { t } from '../i18n';
 
 /**
  * Percent share of each filtered series relative to the unfiltered total per bucket.
@@ -141,7 +142,7 @@ function buildGroupedRangeChart(
   compact: boolean,
   modal?: ModalBuildOptions,
 ): ChartConfiguration {
-  const seriesLabels = series.map((s) => s.label);
+  const seriesLabels = series.map((s) => t(s.label));
   const seriesData = series.map((s) => rangeVals(win, s.rangeKey));
   const chartType = modalChartType(modal, GROUPED_RANGE_MODAL_TYPES) ?? 'bar';
   if (chartType === 'doughnut' || chartType === 'pie') {
@@ -248,7 +249,7 @@ function dualTimeseriesPanel(
         return buildTimeseriesChart(
           labels,
           mean,
-          datasetLabel,
+          t(datasetLabel),
           group,
           c,
           chartType,
@@ -259,8 +260,8 @@ function dualTimeseriesPanel(
       }
       return lineDual(
         labels,
-        { label: 'Average', values: mean },
-        { label: 'Median', values: median },
+        { label: t('Average'), values: mean },
+        { label: t('Median'), values: median },
         group,
         c,
         !modal || chartType === 'area',
@@ -292,11 +293,12 @@ function timeseriesPanel(
     build: (_d, win, _s, c, modal) => {
       const labels = bucketLabels(win);
       const values = (win.panels.timeseries[valueKey] as number[] | undefined) ?? [];
+      const dataset = t(datasetLabel);
       if (!modal) {
         return lineSingle(
           labels,
           values,
-          datasetLabel,
+          dataset,
           group,
           c,
           true,
@@ -310,7 +312,7 @@ function timeseriesPanel(
         return buildTimeseriesChart(
           labels,
           values,
-          datasetLabel,
+          dataset,
           group,
           c,
           chartType,
@@ -322,7 +324,7 @@ function timeseriesPanel(
       return lineSingle(
         labels,
         values,
-        datasetLabel,
+        dataset,
         group,
         c,
         true,
@@ -354,7 +356,7 @@ function compositionTimeseriesPanel(
     build: (_d, win, _s, c, modal) => {
       const labels = bucketLabels(win);
       const ts = win.panels.timeseries;
-      const seriesLabels = seriesKeys.map((s) => s.label);
+      const seriesLabels = seriesKeys.map((s) => t(s.label));
       const raw = seriesKeys.map((s) => (ts[s.key] as number[] | undefined) ?? []);
       const buckets = opts.skipEmptyBuckets
         ? omitEmptyTimeBuckets(labels, raw)
@@ -375,12 +377,13 @@ export const PANELS: PanelDef[] = [
     build: (_d, win, _s, c, modal) => {
       const labels = bucketLabels(win);
       const values = win.panels.timeseries.active_installations;
-      if (!modal) return lineSingle(labels, values, 'Installations', 'overview', c, true, undefined, true);
+      const dataset = t('Installations');
+      if (!modal) return lineSingle(labels, values, dataset, 'overview', c, true, undefined, true);
       const chartType = modalChartType(modal, TIMESERIES_MODAL_TYPES) ?? 'line';
       if (chartType === 'line' || chartType === 'area' || chartType === 'bar' || chartType === 'bar-h') {
-        return buildTimeseriesChart(labels, values, 'Installations', 'overview', c, chartType, undefined, true);
+        return buildTimeseriesChart(labels, values, dataset, 'overview', c, chartType, undefined, true);
       }
-      return lineSingle(labels, values, 'Installations', 'overview', c, true, undefined, true);
+      return lineSingle(labels, values, dataset, 'overview', c, true, undefined, true);
     },
   },
   {
@@ -667,7 +670,7 @@ export const PANELS: PanelDef[] = [
           buckets.findIndex((b) => (b.min ?? 0) === 0 && (b.max ?? 0) === 0),
         );
         const enabled = total - (hist[zeroIdx] ?? 0);
-        data.labels.push(p.label);
+        data.labels.push(t(p.label));
         data.values.push(enabled);
         data.enabled_pct.push(enabled / total);
       }

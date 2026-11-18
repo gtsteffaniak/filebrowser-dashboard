@@ -1,4 +1,5 @@
 import type { WindowData } from '../types/dashboard-v1';
+import { t } from '../i18n';
 
 const VERSION_TRAIN_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+-(stable|beta)$/;
 const VERSION_TRAIN_KEY_RE = /^v?(\d+\.\d+)\.\d+-(stable|beta)$/;
@@ -17,7 +18,7 @@ export function versionTrainKey(version: string): string {
 }
 
 export function versionTrainLabel(trainKey: string): string {
-  if (trainKey === 'other') return 'Other';
+  if (trainKey === 'other') return t('Other');
   return trainKey.replace('.x-stable', '.x stable').replace('.x-beta', '.x beta');
 }
 

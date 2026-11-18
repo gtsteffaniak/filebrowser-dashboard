@@ -2,6 +2,7 @@ import { ExpandDropdown, closeExpandDropdown } from '../components/expandDropdow
 import type { AppState } from '../app/state';
 import type { WindowKey } from '../types/dashboard-v1';
 import { windowPrimaryLabel } from '../utils/windowRange';
+import { t } from '../i18n';
 
 const WINDOW_KEYS: WindowKey[] = ['7d', '90d', '1y'];
 
@@ -36,29 +37,31 @@ export class Navbar {
 
     this.toolbarEl = this.el.querySelector('.navbar-toolbar')!;
     this.metaEl = this.el.querySelector('.navbar-meta')!;
-
     this.windowDropdown = new ExpandDropdown(
       WINDOW_KEYS.map((value) => ({ value, label: windowPrimaryLabel(value) })),
       '90d',
       (v) => callbacks.onWindowChange(v as WindowKey),
-      { compact: true, ariaLabel: 'Time range' },
+      { compact: true, ariaLabel: t('Time range') },
     );
 
     this.versionDropdown = new ExpandDropdown(
-      [{ value: 'all', label: 'All' }],
+      [{ value: 'all', label: t('All') }],
       'all',
       (v) => callbacks.onVersionChange(v),
-      { compact: true, ariaLabel: 'Version filter' },
+      { compact: true, ariaLabel: t('Version filter') },
     );
 
     const themeBtn = document.createElement('button');
     themeBtn.type = 'button';
     themeBtn.className = 'theme-toggle';
-    themeBtn.setAttribute('aria-label', 'Toggle theme');
+    themeBtn.setAttribute('aria-label', t('Toggle theme'));
     themeBtn.textContent = '◐';
     themeBtn.addEventListener('click', () => callbacks.onThemeToggle());
 
     this.toolbarEl.appendChild(this.windowDropdown.el);
+    // TODO: Version filter doesn't work as expected yet. Hidden for now; re-enable (remove the
+    // display override) once the version filtering behaves correctly.
+    this.versionDropdown.el.style.display = 'none';
     this.toolbarEl.appendChild(this.versionDropdown.el);
     this.toolbarEl.appendChild(themeBtn);
   }
@@ -67,9 +70,13 @@ export class Navbar {
     closeExpandDropdown(this.windowDropdown.el);
     closeExpandDropdown(this.versionDropdown.el);
 
+    this.windowDropdown.el.setAttribute('aria-label', t('Time range'));
+    this.versionDropdown.el.setAttribute('aria-label', t('Version filter'));
+    this.toolbarEl.querySelector('.theme-toggle')!.setAttribute('aria-label', t('Toggle theme'));
+
     const data = state.data;
     if (data) {
-      this.metaEl.textContent = `Updated daily · Through ${data.data_through}`;
+      this.metaEl.textContent = t('Updated daily · Through {date}', { date: data.data_through });
     } else {
       this.metaEl.textContent = '';
     }
