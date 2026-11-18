@@ -15,6 +15,7 @@ import {
 } from 'chart.js';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import { App } from './app/App';
+import { initI18n } from './i18n';
 import './theme/tokens.css';
 import './styles/expand-dropdown.css';
 import './styles/dashboard.css';
@@ -38,4 +39,5 @@ Chart.register(
 const appEl = document.getElementById('app');
 if (!appEl) throw new Error('#app not found');
 
-new App(appEl).start();
+// Load the chosen language before the first render so the UI never flashes English.
+initI18n().finally(() => new App(appEl).start());

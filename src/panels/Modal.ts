@@ -6,6 +6,7 @@ import type { AppState } from '../app/state';
 import type { DashboardV1, WindowData } from '../types/dashboard-v1';
 import { getPanel } from './registry';
 import { formatDateRange } from '../utils/windowRange';
+import { t } from '../i18n';
 import {
   CHART_TYPE_LABELS,
   DEFAULT_MODAL_OPTS,
@@ -37,7 +38,7 @@ export class PanelModal {
           <div class="modal-header-text">
             <h2 class="modal-title"></h2>
           </div>
-          <button type="button" class="modal-close" aria-label="Close">×</button>
+          <button type="button" class="modal-close" aria-label="${t('Close')}">×</button>
         </header>
         <div class="modal-controls"></div>
         <div class="modal-chart-wrap"><canvas></canvas></div>
@@ -66,9 +67,9 @@ export class PanelModal {
     };
 
     const headerText = this.el.querySelector('.modal-header-text')!;
-    headerText.querySelector('.modal-title')!.textContent = def.title;
+    headerText.querySelector('.modal-title')!.textContent = t(def.title);
     const rangeText = formatDateRange(win.start, win.end);
-    const descParts = [def.description, rangeText].filter(Boolean);
+    const descParts = [def.description && t(def.description), rangeText].filter(Boolean);
     const descEl = headerText.querySelector('.modal-desc');
     if (descParts.length) {
       if (!descEl) {
@@ -143,7 +144,7 @@ export class PanelModal {
     if (hasChartTypeControl && cfg.chartTypes) {
       const options = cfg.chartTypes.map((value) => ({
         value,
-        label: CHART_TYPE_LABELS[value] ?? value,
+        label: t(CHART_TYPE_LABELS[value] ?? value),
       }));
       this.chartTypeDropdown = new ExpandDropdown(
         options,
@@ -153,9 +154,9 @@ export class PanelModal {
           this.renderChart(def);
           this.renderControls(def);
         },
-        { compact: true, ariaLabel: 'Chart type' },
+        { compact: true, ariaLabel: t('Chart type') },
       );
-      row.appendChild(wrapControl('Chart type', this.chartTypeDropdown.el));
+      row.appendChild(wrapControl(t('Chart type'), this.chartTypeDropdown.el));
     }
 
     this.resetZoomWrap = null;
@@ -163,7 +164,7 @@ export class PanelModal {
       const resetBtn = document.createElement('button');
       resetBtn.type = 'button';
       resetBtn.className = 'modal-control-btn';
-      resetBtn.textContent = 'Reset zoom';
+      resetBtn.textContent = t('Reset zoom');
       resetBtn.addEventListener('click', () => {
         const chart = this.host?.getChart();
         if (chart) {
@@ -171,7 +172,7 @@ export class PanelModal {
           this.syncControlsVisibility();
         }
       });
-      this.resetZoomWrap = wrapControl('View', resetBtn);
+      this.resetZoomWrap = wrapControl(t('View'), resetBtn);
       this.resetZoomWrap.classList.add('hidden');
       row.appendChild(this.resetZoomWrap);
     }

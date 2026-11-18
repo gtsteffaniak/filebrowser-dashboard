@@ -1,6 +1,5 @@
 import type { WindowData, WindowKey } from '../types/dashboard-v1';
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+import { getLocaleTag, t } from '../i18n';
 
 const WINDOW_PRIMARY: Record<WindowKey, string> = {
   '7d': 'Last 7 days',
@@ -13,10 +12,15 @@ function parseDay(iso: string): Date {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+/** Short month name in the active language (e.g. "Sep" / "Sept." / "9月"). */
+function monthName(monthIndex: number): string {
+  return new Intl.DateTimeFormat(getLocaleTag(), { month: 'short', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(2000, monthIndex, 1)),
+  );
+}
+
 function fmtDay(d: Date, withYear: boolean): string {
-  const mon = MONTHS[d.getUTCMonth()];
-  const day = d.getUTCDate();
-  const base = `${mon} ${day}`;
+  const base = `${monthName(d.getUTCMonth())} ${d.getUTCDate()}`;
   return withYear ? `${base}, ${d.getUTCFullYear()}` : base;
 }
 
@@ -28,7 +32,7 @@ export function formatDateRange(startIso: string, endIso: string): string {
   const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
   if (startIso === endIso) return fmtDay(end, true);
   if (sameMonth) {
-    return `${MONTHS[start.getUTCMonth()]} ${start.getUTCDate()}–${end.getUTCDate()}, ${end.getUTCFullYear()}`;
+    return `${monthName(start.getUTCMonth())} ${start.getUTCDate()}–${end.getUTCDate()}, ${end.getUTCFullYear()}`;
   }
   if (sameYear) {
     return `${fmtDay(start, false)}–${fmtDay(end, true)}`;
@@ -37,9 +41,9 @@ export function formatDateRange(startIso: string, endIso: string): string {
 }
 
 export function windowOptionLabel(key: WindowKey, win: WindowData): string {
-  return `${WINDOW_PRIMARY[key]} (${formatDateRange(win.start, win.end)})`;
+  return `${windowPrimaryLabel(key)} (${formatDateRange(win.start, win.end)})`;
 }
 
 export function windowPrimaryLabel(key: WindowKey): string {
-  return WINDOW_PRIMARY[key];
+  return t(WINDOW_PRIMARY[key]);
 }

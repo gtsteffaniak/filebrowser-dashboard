@@ -1,4 +1,5 @@
 import type { ColumnarBreakdown } from '../types/dashboard-v1';
+import { getLocaleTag, t } from '../i18n';
 
 /** User-facing OS name (Go reports `darwin` for macOS). */
 export function formatOsLabel(value: string): string {
@@ -13,17 +14,24 @@ export function formatOsBreakdown(data: ColumnarBreakdown): ColumnarBreakdown {
   };
 }
 
-const regionNames =
-  typeof Intl !== 'undefined' && 'DisplayNames' in Intl
-    ? new Intl.DisplayNames(['en'], { type: 'region' })
-    : null;
+const regionNamesByTag = new Map<string, Intl.DisplayNames>();
 
-/** Full country name for an ISO-3166 alpha-2 code; falls back to the raw label. */
+function regionNames(tag: string): Intl.DisplayNames | null {
+  if (typeof Intl === 'undefined' || !('DisplayNames' in Intl)) return null;
+  let names = regionNamesByTag.get(tag);
+  if (!names) {
+    names = new Intl.DisplayNames([tag], { type: 'region' });
+    regionNamesByTag.set(tag, names);
+  }
+  return names;
+}
+
+/** Full country name in the active language for an ISO-3166 alpha-2 code; falls back to the raw label. */
 export function formatCountryLabel(value: string): string {
   const code = value.trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return value;
   try {
-    return regionNames?.of(code) ?? value;
+    return regionNames(getLocaleTag())?.of(code) ?? value;
   } catch {
     return value;
   }
@@ -36,6 +44,7 @@ export function formatCountryBreakdown(data: ColumnarBreakdown): ColumnarBreakdo
   };
 }
 
+// Brand names are not translated; only generic labels go through t().
 const HOST_PLATFORM_LABELS: Record<string, string> = {
   unknown: 'Unknown',
   'generic-linux': 'Generic Linux',
@@ -49,7 +58,9 @@ const HOST_PLATFORM_LABELS: Record<string, string> = {
 
 export function formatHostPlatformLabel(value: string): string {
   const key = value.toLowerCase().trim();
-  return HOST_PLATFORM_LABELS[key] ?? value;
+  const label = HOST_PLATFORM_LABELS[key];
+  if (!label) return value;
+  return t(label);
 }
 
 export function formatHostPlatformBreakdown(data: ColumnarBreakdown): ColumnarBreakdown {
