@@ -5,6 +5,7 @@ import {
   barH,
   bucketLabels,
   buildTimeseriesChart,
+  lineDual,
   circularBreakdown,
   doughnut,
   groupedBarMulti,
@@ -33,6 +34,24 @@ import { flagSpec } from '../utils/flags';
 import { formatBytes } from '../utils/format';
 import { filterVersionSeries, omitEmptyTimeBuckets, resolveVersionTrainsTs } from '../utils/versions';
 import { t } from '../i18n';
+
+/**
+ * Percent share of each filtered series relative to the unfiltered total per bucket.
+ * Empty buckets are dropped based on the full series so both stay aligned.
+ */
+function shareOfTotal(
+  labels: string[],
+  series: number[][],
+  allSeries: number[][],
+): { bucketLabels: string[]; series: number[][] } {
+  const n = labels.length;
+  const totals = Array.from({ length: n }, (_, b) => allSeries.reduce((a, row) => a + (row?.[b] ?? 0), 0));
+  const keep = totals.map((t, b) => (t > 0 ? b : -1)).filter((b) => b >= 0);
+  return {
+    bucketLabels: keep.map((b) => labels[b]),
+    series: series.map((row) => keep.map((b) => ((row?.[b] ?? 0) / totals[b]) * 100)),
+  };
+}
 
 function modalChartType(modal?: ModalBuildOptions, types?: ModalChartType[]): ModalChartType | undefined {
   return modal?.chartType ?? types?.[0];
@@ -195,6 +214,61 @@ function rangePanel(
         return circularBreakdown(labels, values, group, c, chartType, true);
       }
       return rangeBar(labels, values, group, c, isHorizontalBar(modal, false));
+    },
+  };
+}
+
+/**
+ * Time series showing the mean (solid) and median (dashed) per installation on one chart.
+ * Bar modal types only show the mean, since two bars per bucket are hard to read here.
+ */
+function dualTimeseriesPanel(
+  id: string,
+  title: string,
+  description: string,
+  group: PanelGroup,
+  meanKey: keyof WindowData['panels']['timeseries'],
+  medianKey: keyof WindowData['panels']['timeseries'],
+  datasetLabel: string,
+  section: DashboardSection,
+  extra?: { integerTicks?: boolean; skipZeros?: boolean },
+): PanelDef {
+  return {
+    id,
+    title,
+    description,
+    group,
+    section,
+    modal: { chartTypes: TIMESERIES_MODAL_TYPES, zoom: true },
+    build: (_d, win, _s, c, modal) => {
+      const labels = bucketLabels(win);
+      const mean = (win.panels.timeseries[meanKey] as number[] | undefined) ?? [];
+      const median = (win.panels.timeseries[medianKey] as number[] | undefined) ?? [];
+      const chartType = modal ? (modalChartType(modal, TIMESERIES_MODAL_TYPES) ?? 'line') : 'line';
+      if (chartType === 'bar' || chartType === 'bar-h') {
+        return buildTimeseriesChart(
+          labels,
+          mean,
+          t(datasetLabel),
+          group,
+          c,
+          chartType,
+          undefined,
+          extra?.integerTicks,
+          extra?.skipZeros,
+        );
+      }
+      return lineDual(
+        labels,
+        { label: t('Average'), values: mean },
+        { label: t('Median'), values: median },
+        group,
+        c,
+        !modal || chartType === 'area',
+        undefined,
+        extra?.integerTicks,
+        extra?.skipZeros,
+      );
     },
   };
 }
@@ -422,6 +496,10 @@ export const PANELS: PanelDef[] = [
       }
       const buckets = omitEmptyTimeBuckets(bucketLabels(win), series);
       if (!modal) {
+        if (state.versionFilter !== 'all') {
+          const share = shareOfTotal(bucketLabels(win), series, source.series);
+          return stackedComposition(share.bucketLabels, labels, share.series, 'versions', c, 'area');
+        }
         return stackedComposition(
           buckets.bucketLabels,
           labels,
@@ -449,6 +527,10 @@ export const PANELS: PanelDef[] = [
       );
       const buckets = omitEmptyTimeBuckets(bucketLabels(win), series);
       if (!modal) {
+        if (state.versionFilter !== 'all') {
+          const share = shareOfTotal(bucketLabels(win), series, win.panels.versions.series);
+          return stackedComposition(share.bucketLabels, labels, share.series, 'versions', c, 'area');
+        }
         const pct = normalizeSeriesToPercent(buckets.series);
         return stackedComposition(buckets.bucketLabels, labels, pct, 'versions', c, 'area');
       }
@@ -510,12 +592,13 @@ export const PANELS: PanelDef[] = [
     'users_total',
     'users-sharing',
   ),
-  timeseriesPanel(
+  dualTimeseriesPanel(
     'avg-users',
     'Users over time',
-    'Typical (median) user accounts per installation.',
+    'Average and median user accounts per installation.',
     'counts',
-    'avg_users',
+    'mean_users',
+    'median_users',
     'Users',
     'users-sharing',
     { integerTicks: true, skipZeros: true },
@@ -528,12 +611,13 @@ export const PANELS: PanelDef[] = [
     'shares_active',
     'users-sharing',
   ),
-  timeseriesPanel(
+  dualTimeseriesPanel(
     'avg-shares',
     'Shares over time',
-    'Typical (median) active shares per installation.',
+    'Average and median active shares per installation.',
     'counts',
-    'avg_shares',
+    'mean_shares',
+    'median_shares',
     'Shares',
     'users-sharing',
     { integerTicks: true },
@@ -546,12 +630,13 @@ export const PANELS: PanelDef[] = [
     'access_rules_total',
     'users-sharing',
   ),
-  timeseriesPanel(
+  dualTimeseriesPanel(
     'avg-access-rules',
     'Access rules over time',
-    'Typical (median) access rules per installation.',
+    'Average and median access rules per installation.',
     'counts',
-    'avg_access_rules',
+    'mean_access_rules',
+    'median_access_rules',
     'Access rules',
     'users-sharing',
     { integerTicks: true },
@@ -592,22 +677,24 @@ export const PANELS: PanelDef[] = [
       return buildFlagChart(data, 'counts', c, modal);
     },
   },
-  timeseriesPanel(
+  dualTimeseriesPanel(
     'files-over-time',
-    'Typical indexed files over time',
-    'Typical (median) indexed files per installation.',
+    'Indexed files over time',
+    'Average and median indexed files per installation.',
     'indexing',
-    'avg_total_files',
+    'mean_total_files',
+    'median_total_files',
     'Files',
     'sources',
     { integerTicks: true, skipZeros: true },
   ),
-  timeseriesPanel(
+  dualTimeseriesPanel(
     'folders-over-time',
-    'Typical indexed folders over time',
-    'Typical (median) indexed folders per installation.',
+    'Indexed folders over time',
+    'Average and median indexed folders per installation.',
     'indexing',
-    'avg_total_dirs',
+    'mean_total_dirs',
+    'median_total_dirs',
     'Folders',
     'sources',
     { integerTicks: true, skipZeros: true },
@@ -627,7 +714,7 @@ export const PANELS: PanelDef[] = [
   timeseriesPanel(
     'quick-scan-time-over-time',
     'Quick scan time over time',
-    'Typical (median) quick (incremental) library rescan duration.',
+    'Average quick (incremental) library rescan duration.',
     'indexing',
     'avg_quick_scan_seconds',
     'Quick scan (s)',
@@ -637,7 +724,7 @@ export const PANELS: PanelDef[] = [
   timeseriesPanel(
     'full-scan-time-over-time',
     'Full scan time over time',
-    'Typical (median) full library rescan duration.',
+    'Average full library rescan duration.',
     'indexing',
     'avg_full_scan_seconds',
     'Full scan (s)',
@@ -667,7 +754,7 @@ export const PANELS: PanelDef[] = [
   timeseriesPanel(
     'main-db-size-over-time',
     'Main database size over time',
-    'Typical (median) main database size over the selected range.',
+    'Average main database size over the selected range.',
     'storage',
     'avg_main_db_bytes',
     'Main database',
@@ -677,7 +764,7 @@ export const PANELS: PanelDef[] = [
   timeseriesPanel(
     'search-index-size-over-time',
     'Search index size over time',
-    'Typical (median) search index size over the selected range.',
+    'Average search index size over the selected range.',
     'storage',
     'avg_index_db_bytes',
     'Search index',

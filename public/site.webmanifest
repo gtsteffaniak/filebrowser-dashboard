@@ -1,6 +1,6 @@
 {
-    "name": "FileBrowser Analytics",
-    "short_name": "FileBrowser Analytics",
+    "name": "FileBrowser Quantum Analytics",
+    "short_name": "FBQ Dashboard",
     "icons": [
         {
             "src": "/android-chrome-192x192.png",

@@ -7,7 +7,7 @@ import { SECTION_ORDER, SECTION_TITLES, type DashboardSection } from '../panels/
 import type { WindowKey } from '../types/dashboard-v1';
 import { createInitialState, type AppState } from './state';
 import { initTheme, toggleTheme } from '../theme/theme';
-import { mostCommonVersion } from '../utils/versions';
+import { filterVersionSeries, mostCommonVersion } from '../utils/versions';
 import { formatInteger } from '../utils/format';
 import { el } from '../utils/dom';
 import { getLocaleTag, t } from '../i18n';
@@ -30,6 +30,7 @@ export class App {
       onWindowChange: (w) => this.setWindow(w),
       onVersionChange: (v) => {
         this.state.versionFilter = v;
+        this.renderSummary();
         this.renderPanels();
       },
       onThemeToggle: () => {
@@ -93,23 +94,43 @@ export class App {
     const data = this.state.data;
     if (!data) return;
 
-    const win = data.windows[this.state.window];
     this.navbar.update(this.state);
 
-    const topVersion =
-      win.summary.most_common_version ??
-      mostCommonVersion(win.panels.versions.labels, win.panels.versions.series);
+    this.renderSummary();
+    this.renderPanels();
+  }
 
-    const medianUsers = win.panels.counts.users_total?.p50;
+  private renderSummary(): void {
+    const data = this.state.data;
+    if (!data) return;
+    const win = data.windows[this.state.window];
+    const filter = this.state.versionFilter;
+    const filtered = filter !== 'all';
+
+    let installations = win.summary.unique_installations;
+    let topVersion: string | undefined = win.summary.most_common_version;
+    if (filtered) {
+      const train = win.summary.version_trains.find((vt) => vt.key === filter);
+      if (train) installations = train.count;
+      const v = filterVersionSeries(win.panels.versions.labels, win.panels.versions.series, filter);
+      topVersion = mostCommonVersion(v.labels, v.series);
+    } else {
+      topVersion ??= mostCommonVersion(win.panels.versions.labels, win.panels.versions.series);
+    }
+
+    // Average (mean) users per installation, rounded to a whole number for display.
+    const avgUsers = win.panels.counts.users_total?.avg;
+    // Latest datapoint of the beta share timeseries (percentage of installations on beta).
+    const betaSeries = win.panels.timeseries.beta_share_pct ?? [];
+    const betaPct = betaSeries.length ? betaSeries[betaSeries.length - 1] : undefined;
 
     this.summaryEl.textContent = '';
     this.summaryEl.append(
-      statCard(t('Installations'), win.summary.unique_installations.toLocaleString(getLocaleTag())),
+      statCard(t('Installations'), installations.toLocaleString(getLocaleTag())),
       statCard(t('Most used version'), topVersion ?? '', 'stat-version'),
-      statCard(t('Median users'), medianUsers != null ? formatInteger(medianUsers) : '—'),
+      statCard(t('Average users'), avgUsers != null ? formatInteger(Math.round(avgUsers)) : '—'),
+      statCard(t('Using beta'), betaPct != null ? `${betaPct.toFixed(1)}%` : '—'),
     );
-
-    this.renderPanels();
   }
 
   private addCard(def: PanelDef): void {
