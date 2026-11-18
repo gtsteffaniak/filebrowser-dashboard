@@ -1,4 +1,4 @@
-# FileBrowser Analytics Dashboard
+# FileBrowser Quantum Analytics Dashboard
 ifeq ($(OS),Windows_NT)
     SHELL := C:/Program Files/Git/bin/bash.exe
     .SHELLFLAGS := -ec
@@ -14,7 +14,7 @@ DIST := dist
 .PHONY: help setup dev build preview clean check install
 
 help: ## Show this help
-	@echo "FileBrowser Analytics Dashboard"
+	@echo "FileBrowser Quantum Analytics Dashboard"
 	@echo ""
 	@echo "Usage: make <target>"
 	@echo ""

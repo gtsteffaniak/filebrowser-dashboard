@@ -75,13 +75,19 @@ export interface WindowPanels {
   };
   timeseries: {
     active_installations: number[];
-    avg_total_files: number[];
-    avg_total_dirs: number[];
+    /** Mean (AVG) and median (p50) per installation. Optional: absent in JSON built before the mean/median split. */
+    mean_total_files?: number[];
+    median_total_files?: number[];
+    mean_total_dirs?: number[];
+    median_total_dirs?: number[];
     avg_quick_scan_seconds: number[];
     avg_full_scan_seconds: number[];
-    avg_users: number[];
-    avg_shares: number[];
-    avg_access_rules: number[];
+    mean_users?: number[];
+    median_users?: number[];
+    mean_shares?: number[];
+    median_shares?: number[];
+    mean_access_rules?: number[];
+    median_access_rules?: number[];
     avg_sources_indexed?: number[];
     avg_main_db_bytes: number[];
     avg_index_db_bytes: number[];
