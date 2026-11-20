@@ -18,6 +18,8 @@ export class Navbar {
   private metaEl: HTMLElement;
   private windowDropdown: ExpandDropdown;
   private versionDropdown: ExpandDropdown;
+  private actionsEl: HTMLElement;
+  private menuButtonEl: HTMLButtonElement;
 
   constructor(callbacks: NavbarCallbacks) {
     this.el = document.createElement('header');
@@ -31,12 +33,36 @@ export class Navbar {
           </div>
         </div>
         <p class="navbar-meta"></p>
-        <div class="navbar-toolbar"></div>
+        <div class="navbar-actions">
+          <button type="button" class="navbar-menu-button" aria-label="${t('More options')}" aria-haspopup="true" aria-expanded="false">
+            <i class="material-icons" aria-hidden="true">more_vert</i>
+          </button>
+          <div class="navbar-toolbar"></div>
+        </div>
       </div>
     `;
 
+    this.actionsEl = this.el.querySelector('.navbar-actions')!;
+    this.menuButtonEl = this.el.querySelector('.navbar-menu-button')!;
     this.toolbarEl = this.el.querySelector('.navbar-toolbar')!;
     this.metaEl = this.el.querySelector('.navbar-meta')!;
+
+    // Mobile: the toolbar lives in a three-dots dropdown instead of wrapping below the header.
+    this.menuButtonEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleMenu();
+    });
+    document.addEventListener('click', (e) => {
+      if (!this.isMenuOpen()) return;
+      const target = e.target as HTMLElement;
+      // Keep the menu open while interacting with an ExpandDropdown whose panel is portaled to <body>.
+      if (target.closest('.expand-dropdown-overlay, .expand-dropdown-backdrop')) return;
+      if (this.actionsEl.contains(target)) return;
+      this.closeMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.closeMenu();
+    });
     this.windowDropdown = new ExpandDropdown(
       WINDOW_KEYS.map((value) => ({ value, label: windowPrimaryLabel(value) })),
       '90d',
@@ -56,7 +82,10 @@ export class Navbar {
     themeBtn.className = 'theme-toggle';
     themeBtn.setAttribute('aria-label', t('Toggle theme'));
     themeBtn.textContent = '◐';
-    themeBtn.addEventListener('click', () => callbacks.onThemeToggle());
+    themeBtn.addEventListener('click', () => {
+      callbacks.onThemeToggle();
+      this.closeMenu();
+    });
 
     this.toolbarEl.appendChild(this.windowDropdown.el);
     // TODO: Version filter doesn't work as expected yet. Hidden for now; re-enable (remove the
@@ -64,6 +93,26 @@ export class Navbar {
     this.versionDropdown.el.style.display = 'none';
     this.toolbarEl.appendChild(this.versionDropdown.el);
     this.toolbarEl.appendChild(themeBtn);
+  }
+
+  private isMenuOpen(): boolean {
+    return this.actionsEl.classList.contains('navbar-actions--open');
+  }
+
+  private toggleMenu(): void {
+    if (this.isMenuOpen()) this.closeMenu();
+    else this.openMenu();
+  }
+
+  private openMenu(): void {
+    this.actionsEl.classList.add('navbar-actions--open');
+    this.menuButtonEl.setAttribute('aria-expanded', 'true');
+  }
+
+  private closeMenu(): void {
+    if (!this.isMenuOpen()) return;
+    this.actionsEl.classList.remove('navbar-actions--open');
+    this.menuButtonEl.setAttribute('aria-expanded', 'false');
   }
 
   update(state: AppState): void {

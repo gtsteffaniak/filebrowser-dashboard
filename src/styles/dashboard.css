@@ -58,6 +58,32 @@
   gap: 0.5rem;
 }
 
+/* Desktop: actions wrapper is transparent so the toolbar sits in the grid as before. */
+.navbar-actions {
+  display: contents;
+}
+
+/* Three-dots button is only shown on mobile (see media query below). */
+.navbar-menu-button {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5em;
+  height: 2.5em;
+  padding: 0;
+  background: var(--background);
+  border: var(--borderWidth) solid var(--surfaceSecondary);
+  border-radius: var(--borderRadius);
+  box-shadow: var(--surfaceElevationShadow);
+  color: var(--textPrimary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.navbar-menu-button .material-icons {
+  font-size: 1.25rem;
+}
+
 .navbar-toolbar .expand-dropdown.form-compact {
   min-width: 10rem;
 }
@@ -438,12 +464,58 @@ body.modal-open {
   }
 
   .navbar-inner {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr auto;
   }
 
   .navbar-meta {
+    grid-column: 1 / -1;
+    order: 2;
     text-align: left;
     white-space: normal;
+  }
+
+  .navbar-actions {
+    display: block;
+    position: relative;
+    order: 1;
+  }
+
+  .navbar-menu-button {
+    display: flex;
+  }
+
+  /* Toolbar becomes a floating three-dots dropdown instead of wrapping under the header. */
+  .navbar-toolbar {
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 110;
+    min-width: 13rem;
+    padding: 0.5rem;
+    gap: 0.5rem;
+    background: var(--background);
+    border: var(--borderWidth) solid var(--surfaceSecondary);
+    border-radius: var(--borderRadius);
+    box-shadow: var(--surfaceElevationShadow);
+  }
+
+  .navbar-actions--open .navbar-toolbar {
+    display: flex;
+  }
+
+  .navbar-toolbar .expand-dropdown.form-compact,
+  .navbar-toolbar .expand-dropdown.form-compact:last-of-type {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .navbar-toolbar .theme-toggle {
+    width: 100%;
+    height: 2.5em;
   }
 
   .summary-row,
